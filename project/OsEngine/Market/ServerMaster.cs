@@ -77,6 +77,7 @@ using OsEngine.Market.Servers.AE;
 using OsEngine.Market.Proxy;
 using System.Net;
 using OsEngine.Market.Servers.BloFin;
+using OsEngine.Market.Servers.AscendexSpot;
 
 
 namespace OsEngine.Market
@@ -282,6 +283,7 @@ namespace OsEngine.Market
                 serverTypes.Add(ServerType.GateIoSpot);
                 serverTypes.Add(ServerType.GateIoFutures);
                 serverTypes.Add(ServerType.AscendEx_BitMax);
+                serverTypes.Add(ServerType.AscendexSpot);
                 serverTypes.Add(ServerType.Deribit);
                 serverTypes.Add(ServerType.Binance);
                 serverTypes.Add(ServerType.BinanceFutures);
@@ -403,6 +405,7 @@ namespace OsEngine.Market
                 serverTypes.Add(ServerType.MoexAlgopack);
                 serverTypes.Add(ServerType.MoexFixFastSpot);
                 serverTypes.Add(ServerType.AscendEx_BitMax);
+                serverTypes.Add(ServerType.AscendexSpot);
                 serverTypes.Add(ServerType.Binance);
                 serverTypes.Add(ServerType.BinanceFutures);
                 serverTypes.Add(ServerType.BingXFutures);
@@ -629,6 +632,10 @@ namespace OsEngine.Market
                 if (type == ServerType.AscendEx_BitMax)
                 {
                     newServer = new BitMaxProServer();
+                }
+                if (type == ServerType.AscendexSpot)
+                {
+                    newServer = new AscendexSpotServer(uniqueNum);
                 }
                 if (type == ServerType.Transaq)
                 {
@@ -1351,6 +1358,10 @@ namespace OsEngine.Market
                 {
                     serverPermission = new BitmaxServerPermission();
                 }
+                else if (type == ServerType.AscendexSpot)
+                {
+                    serverPermission = new AscendexSpotServerPermission();
+                }
                 else if (type == ServerType.OKX)
                 {
                     serverPermission = new OkxServerPermission();
@@ -1756,6 +1767,12 @@ namespace OsEngine.Market
         /// биржа BitMax
         /// </summary>
         AscendEx_BitMax,
+
+        /// <summary>
+        /// BitMax exchange
+        /// биржа BitMax
+        /// </summary>
+        AscendexSpot,
 
         /// <summary>
         /// transaq

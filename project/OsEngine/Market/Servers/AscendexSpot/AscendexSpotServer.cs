@@ -3,7 +3,6 @@ using OsEngine.Language;
 using OsEngine.Logging;
 using OsEngine.Market.Servers.Entity;
 using RestSharp;
-using WebSocketSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -18,7 +17,11 @@ using Order = OsEngine.Entity.Order;
 using Security = OsEngine.Entity.Security;
 using Candle = OsEngine.Entity.Candle;
 using Trade = OsEngine.Entity.Trade;
+using OsEngine.Entity.WebSocketOsEngine;
 using OsEngine.Market.Servers.BitMax;
+using OsEngine.Market.Servers.Transaq.TransaqEntity;
+
+
 
 
 namespace OsEngine.Market.Servers.AscendexSpot
@@ -196,7 +199,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         var orderMessage = JsonConvert.DeserializeObject<WebSocketMessage<AscendexSpotOrderData>>(message);
                         UpdateOrder(orderMessage);
-                       
+
                     }
                     else if (message.Contains("\"m\":\"balance\""))
                     {
@@ -236,7 +239,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         continue;
                     }
-
+                    if (message.Contains("\"m\":\"depth-snapshot\"")) 
+                    {
+                        SnapshotDepth(message);
+                    }
+                    if (message.Contains("\"m\":\"depth\""))
+                    {
+                        UpdateDepth(message);
+                    }
                     if (message.Contains("\"m\":\"trades\""))
                     {
                         UpdateTrade(message);
@@ -275,14 +285,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         continue;
                     }
 
-                    if (message.Contains("\"m\":\"depth\""))
-                    {
-                       
-                        SnapshotDepth(message);
-
-                        //UpdateDepth(message);
-
-                    }
                 }
                 catch (Exception exception)
                 {
@@ -292,210 +294,459 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
+
+         private List<MarketDepth> _allDepths = new List<MarketDepth>();
         private void SnapshotDepth(string message)
         {
-            // https://ascendex.com/api/pro/v1/depth?symbol=ASD/USDT"
-            //depth-snapshot
-            throw new NotImplementedException();
-        }
+            AscendexSpotDepthSnapshotResponse snapshot =
+                JsonConvert.DeserializeObject<AscendexSpotDepthSnapshotResponse>(message);
 
-        public MarketDepth Create(string message)
-        {
-            var depth = JsonConvert.DeserializeAnonymousType(message, new Depth());
-
-            var need = _allDepths.Find(d => d.SecurityNameCode == depth.Symbol);
-
-            if (need == null)
+            if (snapshot == null || snapshot.data == null || snapshot.data.data == null)
             {
-                return CreateNew(depth);
+                return;
             }
 
-            return UpdateDepth(depth);
-        }
-
-        private List<MarketDepth> _allDepths = new List<MarketDepth>();
-
-        private MarketDepth CreateNew(Depth quotes)
-        {
-            var newDepth = new MarketDepth();
-
+            MarketDepth newDepth = new MarketDepth();
             newDepth.Time = DateTime.UtcNow;
+            newDepth.SecurityNameCode = snapshot.data.symbol;
 
-            newDepth.SecurityNameCode = quotes.Symbol;
+            string[][] bids = snapshot.data.data.bids;
+            if (bids != null)
+            {
+                for (int i = 0; i < bids.Length; i++)
+                {
+                    newDepth.Bids.Add(new MarketDepthLevel()
+                    {
+                        Price = bids[i][0].ToDecimal(),
+                        Bid = bids[i][1].ToDecimal()
+                    });
+                }
+            }
+
+            string[][] asks = snapshot.data.data.asks;
+            if (asks != null)
+            {
+                for (int i = 0; i < asks.Length; i++)
+                {
+                    newDepth.Asks.Add(new MarketDepthLevel()
+                    {
+                        Price = asks[i][0].ToDecimal(),
+                        Ask = asks[i][1].ToDecimal()
+                    });
+                }
+            }
+
 
             var needDepth = _allDepths.Find(d => d.SecurityNameCode == newDepth.SecurityNameCode);
-
             if (needDepth != null)
             {
                 _allDepths.Remove(needDepth);
             }
 
-            var bids = quotes.Data.Bids;
-            var asks = quotes.Data.Asks;
-
-            foreach (var bid in bids)
-            {
-                newDepth.Bids.Add(new MarketDepthLevel()
-                {
-                    Price = bid[0].ToDecimal(),
-                    Bid = bid[1].ToDecimal(),
-                });
-            }
-
-            foreach (var ask in asks)
-            {
-                newDepth.Asks.Add(new MarketDepthLevel()
-                {
-                    Price = ask[0].ToDecimal(),
-                    Ask = ask[1].ToDecimal(),
-                });
-            }
-
             _allDepths.Add(newDepth);
-
-            return newDepth.GetCopy();
         }
 
-        private MarketDepth UpdateDepth(Depth quotes)
+        private void UpdateDepth(string message)
         {
-            var needDepth = _allDepths.Find(d => d.SecurityNameCode == quotes.Symbol);
+            AscendexSpotDepthWrapper wrapper =
+                JsonConvert.DeserializeObject<AscendexSpotDepthWrapper>(message);
 
-            if (needDepth == null)
+            if (wrapper == null || wrapper.data == null)
             {
-                throw new ArgumentNullException("BitMax: MarketDepth for updates not found");
+                return;
             }
 
-            if (quotes.Data.Bids != null)
-            {
-                var bidsLevels = quotes.Data.Bids;
+            Depth depthUpdate = new Depth();
+            depthUpdate.Symbol = wrapper.symbol;
 
-                foreach (var bidLevel in bidsLevels)
-                {
-                    decimal price = bidLevel[0].ToDecimal();
-                    decimal bid = bidLevel[1].ToDecimal();
+            DepthData data = new DepthData();
+            data.Bids = wrapper.data.bids;
+            data.Asks = wrapper.data.asks;
+            depthUpdate.Data = data;
 
-                    if (bid != 0)
-                    {
-                        InsertLevel(price, bid, Side.Buy, needDepth);
-                    }
-                    else
-                    {
-                        DeleteLevel(price, Side.Buy, needDepth);
-                    }
-                }
-                SortBids(needDepth.Bids);
-            }
-
-            if (quotes.Data.Asks != null)
-            {
-                var asksLevels = quotes.Data.Asks;
-
-                foreach (var askLevel in asksLevels)
-                {
-                    decimal price = askLevel[0].ToDecimal();
-                    decimal ask = askLevel[1].ToDecimal();
-
-                    if (ask != 0)
-                    {
-                        InsertLevel(price, ask, Side.Sell, needDepth);
-                    }
-                    else
-                    {
-                        DeleteLevel(price, Side.Sell, needDepth);
-                    }
-                }
-                SortAsks(needDepth.Asks);
-            }
-
-            return needDepth.GetCopy();
+          //  UpdateDepth(depthUpdate);
         }
 
+        //private MarketDepth UpdateDepth(Depth quotes)
+        //{
+        //    var needDepth = _allDepths.Find(d => d.SecurityNameCode == quotes.Symbol);
+        //    if (needDepth == null)
+        //    {
+        //        return null;
+        //    }
 
-        protected void InsertLevel(decimal price, decimal value, Side side, MarketDepth marketDepth)
+        //    if (quotes.Data.Bids != null)
+        //    {
+        //        string[][] bidsLevels = quotes.Data.Bids;
+
+        //        for (int i = 0; i < bidsLevels.Length; i++)
+        //        {
+        //            decimal price = bidsLevels[i][0].ToDecimal();
+        //            decimal bid = bidsLevels[i][1].ToDecimal();
+
+        //            if (bid != 0)
+        //            {
+        //                InsertLevel(price, bid, Side.Buy, needDepth);
+        //            }
+        //            else
+        //            {
+        //                DeleteLevel(price, Side.Buy, needDepth);
+        //            }
+        //        }
+
+        //        SortBids(needDepth.Bids);
+        //    }
+
+        //    if (quotes.Data.Asks != null)
+        //    {
+        //        string[][] asksLevels = quotes.Data.Asks;
+
+        //        for (int i = 0; i < asksLevels.Length; i++)
+        //        {
+        //            decimal price = asksLevels[i][0].ToDecimal();
+        //            decimal ask = asksLevels[i][1].ToDecimal();
+
+        //            if (ask != 0)
+        //            {
+        //                InsertLevel(price, ask, Side.Sell, needDepth);
+        //            }
+        //            else
+        //            {
+        //                DeleteLevel(price, Side.Sell, needDepth);
+        //            }
+        //        }
+
+        //        SortAsks(needDepth.Asks);
+        //    }
+
+        //    return needDepth.GetCopy();
+        //}
+
+        private void InsertLevel(decimal price, decimal value, Side side, MarketDepth marketDepth)
         {
-            var needDepthPart = side == Side.Buy ? marketDepth.Bids : marketDepth.Asks;
+            var levels = side == Side.Buy ? marketDepth.Bids : marketDepth.Asks;
+            var level = levels.Find(l => l.Price == price);
 
-            var needLevel = needDepthPart.Find(level => level.Price == price);
-
-            if (needLevel != null)
+            if (level != null)
             {
-                if (side == Side.Buy)
-                {
-                    needLevel.Bid = value;
-                }
-                else
-                {
-                    needLevel.Ask = value;
-                }
+                if (side == Side.Buy) { level.Bid = value; } else { level.Ask = value; }
             }
             else
             {
-                needLevel = new MarketDepthLevel();
-                needLevel.Price = price;
+                level = new MarketDepthLevel();
+                level.Price = price;
+                if (side == Side.Buy) { level.Bid = value; } else { level.Ask = value; }
 
-                if (side == Side.Buy)
-                {
-                    needLevel.Bid = value;
-                }
-                else
-                {
-                    needLevel.Ask = value;
-                }
-
-                needDepthPart.Add(needLevel);
-                SortBids(needDepthPart);
+                levels.Add(level);
             }
         }
 
-        protected void DeleteLevel(decimal price, Side side, MarketDepth marketDepth)
+        private void DeleteLevel(decimal price, Side side, MarketDepth marketDepth)
         {
-            var needDepthPart = side == Side.Buy ? marketDepth.Bids : marketDepth.Asks;
-
-            var needLevel = needDepthPart.Find(level => level.Price == price);
-
-            needDepthPart.Remove(needLevel);
+            var levels = side == Side.Buy ? marketDepth.Bids : marketDepth.Asks;
+            var level = levels.Find(l => l.Price == price);
+            if (level != null) { levels.Remove(level); }
         }
 
-        protected void SortBids(List<MarketDepthLevel> levels)
+        private void SortBids(List<MarketDepthLevel> levels)
         {
-            levels.Sort((a, b) =>
-            {
-                if (a.Price > b.Price)
-                {
-                    return -1;
-                }
-                else if (a.Price < b.Price)
-                {
-                    return 1;
-                }
-                else
-                {
-                    return 0;
-                }
-            });
+            levels.Sort((a, b) => b.Price.CompareTo(a.Price));
         }
 
-        protected void SortAsks(List<MarketDepthLevel> levels)
+        private void SortAsks(List<MarketDepthLevel> levels)
         {
-            levels.Sort((a, b) =>
-            {
-                if (a.Price > b.Price)
-                {
-                    return 1;
-                }
-                else if (a.Price < b.Price)
-                {
-                    return -1;
-                }
-                else
-                {
-                    return 0;
-                }
-            });
+            levels.Sort((a, b) => a.Price.CompareTo(b.Price));
         }
 
 
+        //private void SnapshotDepth(string message)
+        //{
+        //    AscendexSpotDepthSnapshotResponse snapshot =
+        // JsonConvert.DeserializeObject<AscendexSpotDepthSnapshotResponse>(message);
 
+        //    // Проверяем, что данные получены корректно
+        //    if (snapshot == null || snapshot.data == null || snapshot.data.data == null)
+        //    {
+        //        return;
+        //    }
+
+        //    // Создаём новый объект MarketDepth
+        //    MarketDepth newDepth = new MarketDepth();
+
+        //    // Устанавливаем время получения данных
+        //    newDepth.Time = DateTime.UtcNow;
+
+        //    // Устанавливаем символ инструмента
+        //    newDepth.SecurityNameCode = snapshot.data.symbol;
+
+        //    // Обрабатываем заявки на покупку (bids)
+        //    string[][] bids = snapshot.data.data.bids;
+        //    if (bids != null)
+        //    {
+        //        for (int i = 0; i < bids.Length; i++)
+        //        {
+        //            // Добавляем уровень заявки
+        //            newDepth.Bids.Add(new MarketDepthLevel()
+        //            {
+        //                Price = bids[i][0].ToDecimal(), // Цена
+        //                Bid = bids[i][1].ToDecimal()    // Объём
+        //            });
+        //        }
+        //    }
+
+        //    // Обрабатываем заявки на продажу (asks)
+        //    string[][] asks = snapshot.data.data.asks;
+        //    if (asks != null)
+        //    {
+        //        for (int i = 0; i < asks.Length; i++)
+        //        {
+        //            // Добавляем уровень заявки
+        //            newDepth.Asks.Add(new MarketDepthLevel()
+        //            {
+        //                Price = asks[i][0].ToDecimal(), // Цена
+        //                Ask = asks[i][1].ToDecimal()    // Объём
+        //            });
+        //        }
+        //    }
+
+        //    // Ищем, существует ли уже такой инструмент в списке
+        //    var needDepth = _allDepths.Find(d => d.SecurityNameCode == newDepth.SecurityNameCode);
+
+        //    if (needDepth != null)
+        //    {
+        //        // Удаляем старый MarketDepth
+        //        _allDepths.Remove(needDepth);
+        //    }
+
+        //    // Добавляем обновлённый MarketDepth
+        //    _allDepths.Add(newDepth);
+        //}
+
+        
+
+        //public MarketDepth Create(string message)
+        //{
+        //    var depth = JsonConvert.DeserializeAnonymousType(message, new Depth());
+
+        //    var need = _allDepths.Find(d => d.SecurityNameCode == depth.Symbol);
+
+        //    if (need == null)
+        //    {
+        //        return CreateNew(depth);
+        //    }
+
+        //    return UpdateDepth(depth);
+        //}
+
+
+        //private MarketDepth CreateNew(Depth quotes)
+        //{
+        //    var newDepth = new MarketDepth();
+
+        //    newDepth.Time = DateTime.UtcNow;
+
+        //    newDepth.SecurityNameCode = quotes.Symbol;
+
+        //    var needDepth = _allDepths.Find(d => d.SecurityNameCode == newDepth.SecurityNameCode);
+
+        //    if (needDepth != null)
+        //    {
+        //        _allDepths.Remove(needDepth);
+        //    }
+
+        //    var bids = quotes.Data.Bids;
+        //    var asks = quotes.Data.Asks;
+
+        //    foreach (var bid in bids)
+        //    {
+        //        newDepth.Bids.Add(new MarketDepthLevel()
+        //        {
+        //            Price = bid[0].ToDecimal(),
+        //            Bid = bid[1].ToDecimal(),
+        //        });
+        //    }
+
+        //    foreach (var ask in asks)
+        //    {
+        //        newDepth.Asks.Add(new MarketDepthLevel()
+        //        {
+        //            Price = ask[0].ToDecimal(),
+        //            Ask = ask[1].ToDecimal(),
+        //        });
+        //    }
+
+        //    _allDepths.Add(newDepth);
+
+        //    return newDepth.GetCopy();
+        //}
+
+      //  private void UpdateDepth(string message)
+      //  {
+      //      AscendexSpotDepthWrapper wrapper =
+      //JsonConvert.DeserializeObject<AscendexSpotDepthWrapper>(message);
+
+      //      // Проверяем наличие данных
+      //      if (wrapper == null || wrapper.data == null)
+      //      {
+      //          return;
+      //      }
+
+      //      // Создаём временный объект типа Depth для совместимости с UpdateDepth
+      //      Depth depthUpdate = new Depth();
+
+      //      // Устанавливаем символ
+      //      depthUpdate.Symbol = wrapper.symbol;
+
+      //      // Создаём объект Data
+      //      DepthData data = new DepthData();
+
+      //      // Присваиваем bids и asks из входящего сообщения
+      //      data.Bids = wrapper.data.bids;
+      //      data.Asks = wrapper.data.asks;
+
+      //      depthUpdate.Data = data;
+
+      //      // Вызываем метод обновления
+      //      UpdateDepth(depthUpdate);
+      //  }
+
+        //private MarketDepth UpdateDepth(Depth quotes)
+        //{
+        //    var needDepth = _allDepths.Find(d => d.SecurityNameCode == quotes.Symbol);
+
+        //    if (needDepth == null)
+        //    {
+        //        throw new ArgumentNullException("BitMax: MarketDepth for updates not found");
+        //    }
+
+        //    if (quotes.Data.Bids != null)
+        //    {
+        //        var bidsLevels = quotes.Data.Bids;
+
+        //        foreach (var bidLevel in bidsLevels)
+        //        {
+        //            decimal price = bidLevel[0].ToDecimal();
+        //            decimal bid = bidLevel[1].ToDecimal();
+
+        //            if (bid != 0)
+        //            {
+        //                InsertLevel(price, bid, Side.Buy, needDepth);
+        //            }
+        //            else
+        //            {
+        //                DeleteLevel(price, Side.Buy, needDepth);
+        //            }
+        //        }
+        //        SortBids(needDepth.Bids);
+        //    }
+
+        //    if (quotes.Data.Asks != null)
+        //    {
+        //        var asksLevels = quotes.Data.Asks;
+
+        //        foreach (var askLevel in asksLevels)
+        //        {
+        //            decimal price = askLevel[0].ToDecimal();
+        //            decimal ask = askLevel[1].ToDecimal();
+
+        //            if (ask != 0)
+        //            {
+        //                InsertLevel(price, ask, Side.Sell, needDepth);
+        //            }
+        //            else
+        //            {
+        //                DeleteLevel(price, Side.Sell, needDepth);
+        //            }
+        //        }
+        //        SortAsks(needDepth.Asks);
+        //    }
+
+        //    return needDepth.GetCopy();
+        //}
+
+
+        //protected void InsertLevel(decimal price, decimal value, Side side, MarketDepth marketDepth)
+        //{
+        //    var needDepthPart = side == Side.Buy ? marketDepth.Bids : marketDepth.Asks;
+
+        //    var needLevel = needDepthPart.Find(level => level.Price == price);
+
+        //    if (needLevel != null)
+        //    {
+        //        if (side == Side.Buy)
+        //        {
+        //            needLevel.Bid = value;
+        //        }
+        //        else
+        //        {
+        //            needLevel.Ask = value;
+        //        }
+        //    }
+        //    else
+        //    {
+        //        needLevel = new MarketDepthLevel();
+        //        needLevel.Price = price;
+
+        //        if (side == Side.Buy)
+        //        {
+        //            needLevel.Bid = value;
+        //        }
+        //        else
+        //        {
+        //            needLevel.Ask = value;
+        //        }
+
+        //        needDepthPart.Add(needLevel);
+        //        SortBids(needDepthPart);
+        //    }
+        //}
+
+        //protected void DeleteLevel(decimal price, Side side, MarketDepth marketDepth)
+        //{
+        //    var needDepthPart = side == Side.Buy ? marketDepth.Bids : marketDepth.Asks;
+
+        //    var needLevel = needDepthPart.Find(level => level.Price == price);
+
+        //    needDepthPart.Remove(needLevel);
+        //}
+
+        //protected void SortBids(List<MarketDepthLevel> levels)
+        //{
+        //    levels.Sort((a, b) =>
+        //    {
+        //        if (a.Price > b.Price)
+        //        {
+        //            return -1;
+        //        }
+        //        else if (a.Price < b.Price)
+        //        {
+        //            return 1;
+        //        }
+        //        else
+        //        {
+        //            return 0;
+        //        }
+        //    });
+        //}
+
+        //protected void SortAsks(List<MarketDepthLevel> levels)
+        //{
+        //    levels.Sort((a, b) =>
+        //    {
+        //        if (a.Price > b.Price)
+        //        {
+        //            return 1;
+        //        }
+        //        else if (a.Price < b.Price)
+        //        {
+        //            return -1;
+        //        }
+        //        else
+        //        {
+        //            return 0;
+        //        }
+        //    });
+        //}
         private void UpdateTrade(string message)
         {
             try
@@ -537,7 +788,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 AscendexSpotMyTradeData json = JsonConvert.DeserializeObject<AscendexSpotMyTradeData>(message);
 
-                if (json == null )
+                if (json == null)
                 {
                     SendLogMessage("UpdateMyTrade> Received empty json", LogMessageType.Error);
                     return;
@@ -569,15 +820,15 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 if (json == null || json.m != "order" || json.data == null)
                 {
-                 
+
                     SendLogMessage("UpdateOrder> Received empty json", LogMessageType.Error);
                     return;
                 }
-                   
 
-                    if (json != null && json.m == "order" && json.data != null)
+
+                if (json != null && json.m == "order" && json.data != null)
                 {
-                    
+
                 }
 
                 Order updateOrder = new Order();
@@ -586,7 +837,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 updateOrder.NumberMarket = json.data.orderId;
                 updateOrder.State = GetOrderState(json.data.st);
                 updateOrder.Side = (json.data.sd.ToLower() == "buy") ? Side.Buy : Side.Sell;
-                updateOrder.TypeOrder = (json.data.ot.ToLower() == "limit") ? OrderPriceType.Limit : OrderPriceType.Market; 
+                updateOrder.TypeOrder = (json.data.ot.ToLower() == "limit") ? OrderPriceType.Limit : OrderPriceType.Market;
                 updateOrder.Price = (json.data.p).ToDecimal();
                 updateOrder.Volume = (json.data.q).ToDecimal();
                 updateOrder.TimeCreate = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
@@ -629,7 +880,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-               // AscendexSpotPortfolio json = JsonConvert.DeserializeObject<AscendexSpotPortfolio>(message);
+                // AscendexSpotPortfolio json = JsonConvert.DeserializeObject<AscendexSpotPortfolio>(message);
 
 
                 if (json == null)
@@ -679,10 +930,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         public DateTime ServerTime { get; set; }
 
+        private WebProxy _myProxy;
         public void Connect(WebProxy proxy = null)
         {
             try
             {
+                _myProxy = proxy;
+
                 _publicKey = ((ServerParameterString)ServerParameters[0]).Value;
                 _secretKey = ((ServerParameterPassword)ServerParameters[1]).Value;
 
@@ -692,9 +946,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
+             
                 string _apiPath = "/api/pro/v2/assets";
 
-                IRestResponse response = CreatePublicQuery(_apiPath, Method.GET);
+                IRestResponse response = CreatePublicQuery(_apiPath, Method.GET, _myProxy);
+
 
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
@@ -776,7 +1032,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             string fullPath = $"/api/pro/v1/info";
 
-            IRestResponse response = CreatePrivateQuery(_baseUrl, fullPath);
+            IRestResponse response = CreatePrivateQuery(_baseUrl, null,fullPath);
 
             ApiKeyInfoResponse responses = JsonConvert.DeserializeObject<ApiKeyInfoResponse>(response.Content);
             return responses.data.accountGroup;
@@ -894,13 +1150,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             try
             {
                 WebSocket webSocketPublicMarketDepthsNew = new WebSocket(_webSocketUrl);
-                webSocketPublicMarketDepthsNew.SslConfiguration.EnabledSslProtocols
-                = System.Security.Authentication.SslProtocols.Ssl3
-                | System.Security.Authentication.SslProtocols.Tls11
-                | System.Security.Authentication.SslProtocols.None
-                | System.Security.Authentication.SslProtocols.Tls12
-                | System.Security.Authentication.SslProtocols.Tls13
-                | System.Security.Authentication.SslProtocols.Tls;
+
                 webSocketPublicMarketDepthsNew.EmitOnPing = true;
                 webSocketPublicMarketDepthsNew.OnOpen += WebSocketPublicMarketDepthsNew_OnOpen;
                 webSocketPublicMarketDepthsNew.OnClose += WebSocketPublicMarketDepthsNew_OnClose;
@@ -938,22 +1188,21 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                WebSocket webSocketPublicTradesNew = new WebSocket(_webSocketUrl);
-                webSocketPublicTradesNew.SslConfiguration.EnabledSslProtocols
-                = System.Security.Authentication.SslProtocols.Ssl3
-                | System.Security.Authentication.SslProtocols.Tls11
-                | System.Security.Authentication.SslProtocols.None
-                | System.Security.Authentication.SslProtocols.Tls12
-                | System.Security.Authentication.SslProtocols.Tls13
-                | System.Security.Authentication.SslProtocols.Tls;
-                webSocketPublicTradesNew.EmitOnPing = true;
-                webSocketPublicTradesNew.OnOpen += WebSocketPublicTradesNew_OnOpen;
-                webSocketPublicTradesNew.OnClose += WebSocketPublicTradesNew_OnClose;
-                webSocketPublicTradesNew.OnMessage += WebSocketPublicTradesNew_OnMessage;
-                webSocketPublicTradesNew.OnError += WebSocketPublicTradesNew_OnError;
-                webSocketPublicTradesNew.Connect();
+                WebSocket _webSocketPublicTradesNew = new WebSocket(_webSocketUrl);
 
-                return webSocketPublicTradesNew;
+                if (_myProxy != null)
+                {
+                    _webSocketPublicTradesNew.SetProxy(_myProxy);
+                }
+
+                _webSocketPublicTradesNew.EmitOnPing = true;
+                _webSocketPublicTradesNew.OnOpen += WebSocketPublicTradesNew_OnOpen;
+                _webSocketPublicTradesNew.OnClose += WebSocketPublicTradesNew_OnClose;
+                _webSocketPublicTradesNew.OnMessage += WebSocketPublicTradesNew_OnMessage;
+                _webSocketPublicTradesNew.OnError += WebSocketPublicTradesNew_OnError;
+                _webSocketPublicTradesNew.Connect();
+
+                return _webSocketPublicTradesNew;
             }
             catch (Exception exception)
             {
@@ -972,13 +1221,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
 
                 _webSocketPrivate = new WebSocket(_webSocketUrl);
-                _webSocketPrivate.SslConfiguration.EnabledSslProtocols
-                = System.Security.Authentication.SslProtocols.Ssl3
-                | System.Security.Authentication.SslProtocols.Tls11
-                | System.Security.Authentication.SslProtocols.None
-                | System.Security.Authentication.SslProtocols.Tls12
-                | System.Security.Authentication.SslProtocols.Tls13
-                | System.Security.Authentication.SslProtocols.Tls;
+
+                if (_myProxy != null)
+                {
+                    _webSocketPrivate.SetProxy(_myProxy);
+                }
+
                 _webSocketPrivate.EmitOnPing = true;
                 _webSocketPrivate.OnOpen += WebSocketPrivate_Opened;
                 _webSocketPrivate.OnClose += WebSocketPrivate_Closed;
@@ -986,6 +1234,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 _webSocketPrivate.OnError += WebSocketPrivate_Error;
 
                 _webSocketPrivate.Connect();
+
             }
             catch (Exception exception)
             {
@@ -1078,9 +1327,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                if (!string.IsNullOrEmpty(e.Message))
+                if (e.Exception != null)
                 {
-                    SendLogMessage($"WebSocket MarketDepths Error: {e.Message}", LogMessageType.Error);
+                    ////    SendLogMessage($(" WebSocket MarketDepths"(e.Exception.ToString(), LogMessageType.Error);
+                    SendLogMessage(e.Exception.ToString(), LogMessageType.Error);
                 }
             }
             catch (Exception exception)
@@ -1156,11 +1406,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                if (!string.IsNullOrEmpty(e.Message))
+                //if (!string.IsNullOrEmpty(e.Message))
+                //{
+                //    SendLogMessage($"WebSocket Trades Error: {e.Message}", LogMessageType.Error);
+                //}
+                if (e.Exception != null)
                 {
-                    SendLogMessage($"WebSocket Trades Error: {e.Message}", LogMessageType.Error);
+                    SendLogMessage(e.Exception.ToString(), LogMessageType.Error);
                 }
-
             }
             catch (Exception exception)
             {
@@ -1268,9 +1521,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                if (!string.IsNullOrEmpty(e.Message))
+                //if (!string.IsNullOrEmpty(e.Message))
+                //{
+                //    SendLogMessage($"WebSocket private Error: {e.Message}", LogMessageType.Error);
+                //}
+                if (e.Exception != null)
                 {
-                    SendLogMessage($"WebSocket private Error: {e.Message}", LogMessageType.Error);
+                    SendLogMessage(e.Exception.ToString(), LogMessageType.Error);
                 }
             }
             catch (Exception exception)
@@ -1432,7 +1689,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             string path = $"/{accountGroup}/api/pro/v1/{accountCategory}/order/all";
 
 
-            IRestResponse response = CreatePrivateQuery(path, accountGroup, accountCategory, null, Method.DELETE);
+            IRestResponse response = CreatePrivateQuery(path, accountGroup, accountCategory, null, Method.DELETE, _myProxy);
 
             if (response == null)
             {
@@ -1478,7 +1735,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
 
-            IRestResponse response = CreatePrivateQuery(path, body, accountGroup, null, Method.DELETE);
+            IRestResponse response = CreatePrivateQuery(path, body, accountGroup, null, Method.DELETE, _myProxy);
 
             if (response == null)
             {
@@ -1521,7 +1778,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             var body = new { symbol = security };
 
 
-            IRestResponse response = CreatePrivateQuery(path, body, accountGroup, accountCategory, Method.DELETE);
+            IRestResponse response = CreatePrivateQuery(path, body, accountGroup, accountCategory, Method.DELETE, _myProxy);
 
             if (response == null)
             {
@@ -1775,7 +2032,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string _apiPath = $"/api/pro/v1/barhist?symbol={symbol}&interval={interval}&start={startDate}&end={endDate}&n={limit}";
 
 
-                IRestResponse response = CreatePublicQuery(_apiPath, Method.GET);
+                IRestResponse response = CreatePublicQuery(_apiPath, Method.GET, _myProxy);
 
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
@@ -1912,7 +2169,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string accountGroup = GetAccountGroup();
                 string fullPath = $"/{accountGroup}/api/pro/v1/cash/balance";
 
-                IRestResponse response = CreatePrivateQuery(fullPath, accountGroup);
+                IRestResponse response = CreatePrivateQuery(fullPath,null,null,accountGroup,Method.GET, _myProxy);
 
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
@@ -1972,7 +2229,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string _apiPath = "api/pro/v1/cash/products";
 
-                IRestResponse response = CreatePublicQuery(_apiPath, Method.GET);
+                IRestResponse response = CreatePublicQuery(_apiPath, Method.GET, _myProxy);
 
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
@@ -2157,11 +2414,17 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         #region  12 Queries
 
-        private IRestResponse CreatePublicQuery(string path, Method method)
+        private IRestResponse CreatePublicQuery(string path, Method method, IWebProxy proxy = null)
         {
             try
-            {
+            { 
                 RestClient client = new RestClient(_baseUrl);
+
+                if (proxy != null)
+                {
+                    client.Proxy = proxy;
+                }
+               
                 RestRequest request = new RestRequest(path, method);
                 IRestResponse response = client.Execute(request);
 
@@ -2174,7 +2437,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-        private IRestResponse CreatePrivateQuery(string fullPath, object body = null, string accountGroup = null, string accountCategory = null, Method method = Method.GET)
+        private IRestResponse CreatePrivateQuery(string fullPath, object body = null, string accountGroup = null, string accountCategory = null, Method method = Method.GET, IWebProxy proxy = null)
         {
             try
             {
@@ -2184,6 +2447,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string signature = GenerateSignature(message, _secretKey);
 
                 RestClient client = new RestClient(_baseUrl);
+
+                if (_myProxy != null)
+                {
+                    client.Proxy = _myProxy;
+                }
                 //RestRequest request = new RestRequest(fullPath, Method.GET);
                 RestRequest request = new RestRequest(fullPath, method);
                 request.AddHeader("Content-Type", "application/json");

@@ -1722,7 +1722,7 @@ namespace OsEngine.Market.Servers.BinGxSpot
             try
             {
                 RestClient client = new RestClient(_baseUrl);
-
+                
                 if (_myProxy != null)
                 {
                     client.Proxy = _myProxy;
