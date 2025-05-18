@@ -87,6 +87,9 @@
     <Reference Include="TInvestApi">
       <HintPath>..\..\related projects\TInvestApi\bin\Debug\TInvestApi.dll</HintPath>
     </Reference>
+    <Reference Include="websocket-sharp">
+      <HintPath>..\..\..\websocket-sharp\websocket-sharp\bin\Release\websocket-sharp.dll</HintPath>
+    </Reference>
     <Reference Include="WebSocket4Net">
       <HintPath>bin\Debug\WebSocket4Net.dll</HintPath>
     </Reference>

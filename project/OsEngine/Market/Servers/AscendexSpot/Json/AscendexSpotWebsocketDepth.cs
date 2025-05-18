@@ -9,10 +9,10 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
     class AscendexSpotDepthSnapshotResponse
     {
         public string code { get; set; }
-        public AscendexSpotDepthWrapper data { get; set; }
+        public AscendexSpotDepthMessage data { get; set; }
     }
 
-    class AscendexSpotDepthWrapper
+    class AscendexSpotDepthMessage
     {
         public string m { get; set; } // "depth-snapshot"
         public string symbol { get; set; }
@@ -29,4 +29,21 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string[][] bids { get; set; }
     }
 
+}
+//Если size > 0 и цена отсутствует — добавляем уровень.
+
+//Если size > 0 и цена уже есть — обновляем количество.
+
+//Если size == 0 — удаляем уровень по цене.
+
+public class AscendexSpotDepthEntry
+{
+    public decimal Price;
+    public decimal Quantity;
+}
+
+public class AscendexSpotDepth
+{
+    public List<AscendexSpotDepthEntry> Bids = new List<AscendexSpotDepthEntry>();
+    public List<AscendexSpotDepthEntry> Asks = new List<AscendexSpotDepthEntry>();
 }

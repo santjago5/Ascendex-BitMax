@@ -68,7 +68,7 @@ namespace OsEngine.Entity.WebSocketOsEngine
                 }
 
                 _cts = new CancellationTokenSource();
-
+             
                 await _client.ConnectAsync(new Uri(_url), _cts.Token);
 
                 ReadyState = WebSocketState.Open;
