@@ -722,28 +722,17 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         Thread.Sleep(1);
                         continue;
-                    }//		message	"{\"m\":\"connected\",\"type\":\"unauth\"}"	string
-                     //         {"m":"sub","ch":"depth:ETH/BTC","code":0}
-                     //message "{\"m\":\"sub\",\"ch\":\"trades:ETH/BTC\",\"code\":0}"  string
-
-
+                    }
 
                     if (FIFOListWebSocketPublicMessage.TryDequeue(out string message))
                     {
 
-                        if (message.Contains("\"m\":\"depth-snapshot\""))
-                        {
-                            SnapshotDepth(message);
-                            continue;
-                        }
-                        //else if (message.Contains("\"m\":\"sub\"") && message.Contains("\"ch\":\"depth:"))
-                        else if (message.Contains("\"m\":\"depth\""))
+                        if (message.Contains("\"m\":\"depth\""))
 
-                                {
+                        {
                             UpdateDepth(message);
                             continue;
                         }
-                        //else if (message.Contains("\"m\":\"sub\"") && message.Contains("\"ch\":\"trades:"))
                         else if (message.Contains("\"m\":\"trades\""))
                         {
                             UpdateTrade(message);
@@ -2196,21 +2185,22 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
+              
                 AscendexSpotPublicTradesResponse response = JsonConvert.DeserializeObject<AscendexSpotPublicTradesResponse>(message);
-
-                if (response == null || response.data == null || response.data.data == null)
+             
+                if (response == null || response.data == null || response.data == null)
                 {
                     SendLogMessage("UpdateTrade> Received empty  json", LogMessageType.Error);
                     return;
                 }
 
-                for (int i = 0; i < response.data.data.Count; i++)
+                for (int i = 0; i < response.data.Count; i++)
                 {
-                    AscendexSpotPublicTradeItem json = response.data.data[i];
+                    AscendexSpotPublicTradeItem json = response.data[i];
 
                     Trade newTrade = new Trade();
 
-                    newTrade.SecurityNameCode = response.data.symbol;
+                    newTrade.SecurityNameCode = response.symbol;
                     newTrade.Id = json.seqnum;
                     newTrade.Price = json.p.ToString().ToDecimal();
                     newTrade.Volume = json.q.ToString().ToDecimal();

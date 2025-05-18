@@ -6,13 +6,9 @@ using System.Threading.Tasks;
 
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
-    class AscendexSpotPublicTradesResponse
-    {
-        public string code { get; set; }
-        public AscendexSpotPublicTrades data { get; set; }
-    }
 
-    class AscendexSpotPublicTrades
+
+    class AscendexSpotPublicTradesResponse
     {
         public string m { get; set; }           // "trades"
         public string symbol { get; set; }      // "ASD/USDT"
