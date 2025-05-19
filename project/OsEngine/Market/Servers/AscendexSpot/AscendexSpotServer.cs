@@ -730,7 +730,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         Thread.Sleep(1);
                         continue;
                     }
-
+                    //{"m":"connected","type":"unauth"}
                     if (FIFOListWebSocketPublicMessage.TryDequeue(out string message))
                     {
                         if (message.Contains("\"m\":\"depth-snapshot\""))
@@ -750,11 +750,34 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             UpdateTrade(message);
                             continue;
                         }
-                        else if (message.Contains("\"m\":\"ping\"")) 
+                        else if (message.Contains("\"m\":\"ping\""))
                         {
-                            webSocketPublic.Send("pong");
-                            return;
+                            for (int i = 0; i < _webSocketPublic.Count; i++)
+                            {
+                                WebSocket socket = _webSocketPublic[i];
+
+                                if (socket.ReadyState == WebSocketState.Open)
+                                {
+                                    socket.Send("pong");
+                                    SendLogMessage("📡 Отправлен pong на ping", LogMessageType.System);
+                                }
+                            }
+
+                            //return;
+                            continue;
                         }
+                        //if (e.Data.Contains("\"m\":\"ping\""))
+                        //{
+                        //    WebSocket socket = sender as WebSocket;
+
+                        //    if (socket != null && socket.ReadyState == WebSocketState.Open)
+                        //    {
+                        //        socket.Send("pong");
+                        //        SendLogMessage("📡 Pong отправлен (по sender)", LogMessageType.System);
+                        //    }
+
+                        //    return;
+                        //}
                     }
                 }
                 catch (Exception exception)
@@ -770,7 +793,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private ConcurrentQueue<string> FIFOListWebSocketPublicMessage = new ConcurrentQueue<string>();
 
         private List<WebSocket> _webSocketPublic = new List<WebSocket>();
-        private WebSocket webSocketPublic;
+
         private WebSocket _webSocketPrivate;
         private const string _webSocketUrl = "wss://ascendex.com/1/api/pro/v1/stream";
 
@@ -1670,7 +1693,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private List<MarketDepth> _allDepths = new List<MarketDepth>();
         private bool _snapshotInitialized = false;
         private long _lastSeqNum = -1;
-        private string _currentSymbol = string.Empty;
+
+        private DateTime _lastTimeMd = DateTime.MinValue;
 
         // Метод обработки снапшота стакана
         private void SnapshotDepth(string message)
@@ -1692,8 +1716,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
             newDepth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(snapshot.data.ts));
 
             // Добавляем уровни BID (покупки)
-            for (int i = 0; i < snapshot.data.bids.Count; i++)
-            {
+         
+                for (int i = 0; i < snapshot.data.bids.Count && i < 25; i++)
+                {
                 var level = snapshot.data.bids[i];
                 newDepth.Bids.Add(new MarketDepthLevel
                 {
@@ -1703,7 +1728,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
 
             // Добавляем уровни ASK (продажи)
-            for (int i = 0; i < snapshot.data.asks.Count; i++)
+            for (int i = 0; i < snapshot.data.asks.Count && i < 25; i++)
             {
                 var level = snapshot.data.asks[i];
                 newDepth.Asks.Add(new MarketDepthLevel
@@ -1712,7 +1737,19 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     Ask = level[1].ToDecimal()
                 });
             }
+            newDepth.Time = ServerTime;
 
+            if (newDepth.Time < _lastTimeMd)
+            {
+                newDepth.Time = _lastTimeMd;
+            }
+            else if (newDepth.Time == _lastTimeMd)
+            {
+                _lastTimeMd = DateTime.FromBinary(_lastTimeMd.Ticks + 1);
+
+                newDepth.Time = _lastTimeMd;
+            }
+            _lastTimeMd = newDepth.Time;
             // Передаем стакан в систему
             MarketDepthEvent?.Invoke(newDepth);
 
@@ -1729,10 +1766,17 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private void UpdateDepth(string json)
         {
             try
-            {
+            { 
                 // Десериализуем входящее сообщение
                 var update = JsonConvert.DeserializeObject<AscendexSpotDepthMessage>(json);
-                if (update?.data == null /*|| update.symbol != _currentSymbol*/)
+
+             // Находим соответствующий стакан
+                var depth = _allDepths.Find(d => d.SecurityNameCode == update.symbol);
+
+                if (depth == null)
+                    return;
+
+                if (update?.data == null || update.symbol != depth.SecurityNameCode)
                     return;
 
                 if (!_snapshotInitialized) return;
@@ -1742,16 +1786,24 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     _snapshotInitialized = false;
                     _lastSeqNum = -1;
-                  //  RequestSnapshot(_currentSymbol);
+                    RequestSnapshot(depth.SecurityNameCode);
                     return;
                 }
 
                 _lastSeqNum = Convert.ToInt64(update.data.seqnum);
 
-                // Находим соответствующий стакан
-                var depth = _allDepths.Find(d => d.SecurityNameCode == update.symbol);
-                if (depth == null)
-                    return;
+                depth.Time = ServerTime;
+
+                if (depth.Time < _lastTimeMd)
+                {
+                    depth.Time = _lastTimeMd;
+                }
+                else if (depth.Time == _lastTimeMd)
+                {
+                    _lastTimeMd = DateTime.FromBinary(_lastTimeMd.Ticks + 1);
+
+                    depth.Time = _lastTimeMd;
+                }
 
                 // Применяем изменения
                 ApplyLevels(update.data.bids, depth.Bids, isBid: true);
@@ -1759,6 +1811,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 // Обновляем время и передаём дальше
                 depth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(update.data.ts));
+                depth.Bids = depth.Bids.OrderByDescending(x => x.Price).Take(25).ToList();
+                depth.Asks = depth.Asks.OrderBy(x => x.Price).Take(25).ToList();
                 MarketDepthEvent?.Invoke(depth.GetCopy());
             }
             catch (Exception ex)
@@ -1767,17 +1821,30 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-        // Метод подписки на обновление стакана
-        //private void SubscribeDepth(string symbol)
-        //{
-        //    webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{symbol}\"}}");
-        //}
+       // Метод подписки на обновление стакана
+        private void SubscribeDepth(string symbol)
+        {
+            WebSocket webSocketPublic  = _webSocketPublic[_webSocketPublic.Count - 1];
 
-        //// Метод запроса снапшота стакана
-        //private void RequestSnapshot(string symbol)
-        //{
-        //    webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{symbol}\"}}}}");
-        //}
+            // Проверка, открыт ли сокет
+            if (webSocketPublic.ReadyState == WebSocketState.Open)
+            {
+                webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{symbol}\"}}");
+            }
+        }
+
+        // Метод запроса снапшота стакана
+        private void RequestSnapshot(string symbol)
+        {
+            WebSocket webSocketPublic = _webSocketPublic[_webSocketPublic.Count - 1];
+
+            // Проверка, открыт ли сокет
+            if (webSocketPublic.ReadyState == WebSocketState.Open)
+             {
+                webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{symbol}\"}}}}");
+            }
+        }
+        
 
         // Метод применяет список изменений к уровням стакана
         private void ApplyLevels(List<List<string>> updates, List<MarketDepthLevel> levels, bool isBid)
