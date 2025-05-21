@@ -421,82 +421,178 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
         public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
         {
-            int limit = 4990;
-
+            int limit = 500; // максимум свечей за один запрос
             List<Candle> allCandles = new List<Candle>();
-
-            DateTime startTime = timeEnd - TimeSpan.FromMinutes(tf.TotalMinutes * countToLoad);
             HashSet<DateTime> uniqueTimes = new HashSet<DateTime>();
 
-            int candlesLoaded = 0;
+            // Получаем строковое представление таймфрейма, например "1m", "5m"
             string timeFrame = GetInterval(tf);
-
-            DateTime periodEnd = startTime;
-
-            while (candlesLoaded < countToLoad && periodEnd < timeEnd)
+            if (timeFrame == null)
             {
-                int candlesToLoad = Math.Min(limit, countToLoad - candlesLoaded);
-                DateTime periodStart = startTime;
+                SendLogMessage("❌ Не удалось получить таймфрейм", LogMessageType.Error);
+                return null;
+            }
 
-                periodEnd = periodStart.AddMinutes(tf.TotalMinutes * candlesToLoad);
+            int candlesLoaded = 0;
 
-                if (periodEnd > DateTime.UtcNow)
+            while (candlesLoaded < countToLoad)
+            {
+                int remaining = countToLoad - candlesLoaded;
+                int currentLoad = Math.Min(remaining, limit);
+
+                // Вычисляем стартовое время запроса
+                DateTime fromTime = timeEnd - TimeSpan.FromMinutes(tf.TotalMinutes * currentLoad);
+                SendLogMessage($"🕐 Запрос свечей: from={fromTime:yyyy-MM-dd HH:mm:ss}, to={timeEnd:yyyy-MM-dd HH:mm:ss}, need={currentLoad}", LogMessageType.System);
+
+                // Выполняем запрос к серверу
+                List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, fromTime, timeEnd, currentLoad);
+
+                if (rangeCandles == null || rangeCandles.Count == 0)
                 {
-                    periodEnd = DateTime.UtcNow;
+                    SendLogMessage("⚠ Сервер вернул пустой список свечей — прерываем загрузку", LogMessageType.System);
+                    break;
                 }
 
-                List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, periodStart, periodEnd, candlesToLoad);
+                // Логируем границы полученных данных
+                DateTime first = rangeCandles[0].TimeStart;
+                DateTime last = rangeCandles[rangeCandles.Count - 1].TimeStart;
+                SendLogMessage($"📅 Диапазон полученных свечей: {first:yyyy-MM-dd HH:mm} — {last:yyyy-MM-dd HH:mm}", LogMessageType.System);
 
-                if (rangeCandles == null)
-                {
-                    return null;
-                }
+                int beforeAdd = allCandles.Count;
 
-                if (rangeCandles.Count == 0)
-                {
-                    return null;
-                }
-
+                // Фильтрация по уникальному времени
                 for (int i = 0; i < rangeCandles.Count; i++)
                 {
-                    if (uniqueTimes.Add(rangeCandles[i].TimeStart))
+                    //if (uniqueTimes.Add(rangeCandles[i].TimeStart))
                     {
-                        allCandles.Add(rangeCandles[i]);
+                        allCandles.Insert(0, rangeCandles[i]); // вставляем в начало для хронологического порядка
                     }
                 }
 
-                int actualCandlesLoaded = rangeCandles.Count;
+                candlesLoaded = allCandles.Count;
 
-                candlesLoaded += actualCandlesLoaded;
-                startTime = allCandles[allCandles.Count - 1].TimeStart;
+                SendLogMessage($"📊 Загружено всего свечей: {candlesLoaded} из {countToLoad}", LogMessageType.System);
 
-                if (periodEnd >= timeEnd)
+
+
+                // ✅ Если все свечи загружены — выходим
+                if (candlesLoaded >= countToLoad)
                 {
+                    SendLogMessage("✅ Все свечи загружены — выход из цикла", LogMessageType.System);
+                    break;
+                }
+
+                if (allCandles.Count == beforeAdd)
+                {
+                    SendLogMessage("⚠ Нет новых уникальных свечей — возможен конец данных, прерываем", LogMessageType.System);
+                    break;
+                }
+
+                // Сдвигаем timeEnd по первой полученной свече
+                timeEnd = first.AddMinutes(-tf.TotalMinutes);
+
+                if (fromTime <= DateTime.MinValue.AddMinutes(10))
+                {
+                    SendLogMessage("⚠ Достигнут предел времени — выход из цикла", LogMessageType.System);
                     break;
                 }
             }
 
-            for (int i = allCandles.Count - 1; i >= 0; i--)
-            {
-                if (allCandles[i].TimeStart > timeEnd)
-                {
-                    allCandles.RemoveAt(i);
-                }
-            }
+            // Гарантируем отсутствие дубликатов по времени
+            //allCandles = allCandles
+            //    .GroupBy(c => c.TimeStart)
+            //    .Select(g => g.First())
+            //    .ToList();
 
-            for (int i = allCandles.Count - 1; i > 0; i--)
-            {
-                if (allCandles[i].TimeStart == allCandles[i - 1].TimeStart)
-                {
-                    allCandles.RemoveAt(i);
-                }
-            }
+            // Обрезаем до нужного количества, если набралось больше
+            //if (allCandles.Count > countToLoad)
+            //{
+            //    allCandles = allCandles.Skip(allCandles.Count - countToLoad).ToList();
+            //}
 
             return allCandles;
         }
+
+
+
+        //public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
+        //{
+        //    int limit = 490;
+
+        //    List<Candle> allCandles = new List<Candle>();
+
+        //    DateTime startTime = timeEnd - TimeSpan.FromMinutes(tf.TotalMinutes * countToLoad);
+        //    HashSet<DateTime> uniqueTimes = new HashSet<DateTime>();
+
+        //    int candlesLoaded = 0;
+        //    string timeFrame = GetInterval(tf);
+
+        //    DateTime periodEnd = startTime;
+
+        //    while (candlesLoaded < countToLoad && periodEnd < timeEnd)
+        //    {
+        //        int candlesToLoad = Math.Min(limit, countToLoad - candlesLoaded);
+        //        DateTime periodStart = startTime;
+
+        //        periodEnd = periodStart.AddMinutes(tf.TotalMinutes * candlesToLoad);
+
+        //        if (periodEnd > DateTime.UtcNow)
+        //        {
+        //            periodEnd = DateTime.UtcNow;
+        //        }
+
+        //        List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, periodStart, periodEnd, candlesToLoad);
+
+        //        if (rangeCandles == null)
+        //        {
+        //            return null;
+        //        }
+
+        //        if (rangeCandles.Count == 0)
+        //        {
+        //            return null;
+        //        }
+
+        //        for (int i = 0; i < rangeCandles.Count; i++)
+        //        {
+        //            if (uniqueTimes.Add(rangeCandles[i].TimeStart))
+        //            {
+        //                allCandles.Add(rangeCandles[i]);
+        //            }
+        //        }
+
+        //        int actualCandlesLoaded = rangeCandles.Count;
+
+        //        candlesLoaded += actualCandlesLoaded;
+        //        startTime = allCandles[allCandles.Count - 1].TimeStart;
+
+        //        if (periodEnd >= timeEnd)
+        //        {
+        //            break;
+        //        }
+        //    }
+
+        //    for (int i = allCandles.Count - 1; i >= 0; i--)
+        //    {
+        //        if (allCandles[i].TimeStart > timeEnd)
+        //        {
+        //            allCandles.RemoveAt(i);
+        //        }
+        //    }
+
+        //    for (int i = allCandles.Count - 1; i > 0; i--)
+        //    {
+        //        if (allCandles[i].TimeStart == allCandles[i - 1].TimeStart)
+        //        {
+        //            allCandles.RemoveAt(i);
+        //        }
+        //    }
+
+        //    return allCandles;
+        //}
         public List<Trade> GetTickDataToSecurity(Security security, DateTime startTime, DateTime endTime, DateTime actualTime)
         {
-            throw new NotImplementedException();
+            return null;
         }
 
         public List<Candle> GetLastCandleHistory(Security security, TimeFrameBuilder timeFrameBuilder, int candleCount)
@@ -531,12 +627,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 timeFrameMinutes == 15 ||
                 timeFrameMinutes == 30 ||
                 timeFrameMinutes == 60 ||
+                timeFrameMinutes == 120 ||
                 timeFrameMinutes == 240 ||
                 timeFrameMinutes == 360 ||
                 timeFrameMinutes == 720 ||
-                timeFrameMinutes == 1440 ||
-                timeFrameMinutes == 10080 ||
-                timeFrameMinutes == 43829)
+                timeFrameMinutes == 1440 )
+            
             {
                 return true;
             }
@@ -551,7 +647,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             else if (tf.TotalMinutes > 0)
             {
-                return ((int)tf.TotalMinutes) + "m";
+                return (tf.TotalMinutes).ToString();
             }
             else
             {
@@ -568,10 +664,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 return Convert.ToInt32(timePeriod.TotalDays / tf.TotalDays);
             }
-            //else if (tf.Hours > 0)
-            //{
-            //    return Convert.ToInt32(timePeriod.TotalHours / tf.TotalHours);
-            //}
+            else if (tf.Hours > 0)
+            {
+                return Convert.ToInt32(timePeriod.TotalHours / tf.TotalHours);
+            }
             else if (tf.Minutes > 0)
             {
                 return Convert.ToInt32(timePeriod.TotalMinutes / tf.TotalMinutes);
@@ -597,7 +693,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 long endDate = TimeManager.GetTimeStampMilliSecondsToDateTime(endTime);
 
 
-                string _apiPath = $"/api/pro/v1/barhist?symbol={symbol}&interval={interval}&start={startDate}&end={endDate}&n={limit}";
+                // string _apiPath = $"/api/pro/v1/barhist?symbol={symbol}&interval={interval}&start={startDate}&end={endDate}&n={limit}";
+
+                string _apiPath = $"/api/pro/v1/barhist?symbol={symbol}&interval={interval}&end={endDate}&n={limit}";
 
 
                 IRestResponse response = CreatePublicQuery(_apiPath, Method.GET/*, _myProxy*/);
@@ -662,7 +760,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     try
                     {
-                        if (string.IsNullOrEmpty(candle.ts) || string.IsNullOrEmpty(candle.o) ||
+                        if (string.IsNullOrEmpty(candle.o) ||
                             string.IsNullOrEmpty(candle.c) || string.IsNullOrEmpty(candle.h) ||
                             string.IsNullOrEmpty(candle.l) || string.IsNullOrEmpty(candle.v))
                         {
@@ -674,7 +772,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             (candle.h.ToDecimal() == 0 || (candle.l).ToDecimal() == 0 ||
                             (candle.v).ToDecimal() == 0))
                         {
-                            SendLogMessage("Candle data contains zero values", LogMessageType.Error);
+                            //SendLogMessage("Candle data contains zero values", LogMessageType.Error);
                             continue;
                         }
 
@@ -731,6 +829,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         continue;
                     }
                     //{"m":"connected","type":"unauth"}
+                    //{"m":"sub","ch":"depth:1INCH/USDT","code":0}
                     if (FIFOListWebSocketPublicMessage.TryDequeue(out string message))
                     {
                         if (message.Contains("\"m\":\"depth-snapshot\""))
@@ -758,13 +857,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                                 if (socket.ReadyState == WebSocketState.Open)
                                 {
-                                    socket.Send("pong");
+                                    //  socket.Send("pong");
+                                    SendPong(socket);
                                     SendLogMessage("📡 Отправлен pong на ping", LogMessageType.System);
                                 }
                             }
 
                             //return;
-                            continue;
+                            //continue;
                         }
                         //if (e.Data.Contains("\"m\":\"ping\""))
                         //{
@@ -1069,8 +1169,22 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 else if (e.IsText && e.Data.Contains("ping"))
                 {
-                    _webSocketPrivate.Send("pong");
-                    return;
+                       _webSocketPrivate.Send("pong");
+                    //    return;
+                    //for (int i = 0; i < _webSocketPrivate.Count; i++)
+                    //{
+                    //    WebSocket socket = _webSocketPrivate[i];
+
+                        //if (socket.ReadyState == WebSocketState.Open)
+                        //{
+                        //    //  socket.Send("pong");
+                            //SendPong(socket);
+                            //SendLogMessage("📡 Отправлен pong на ping", LogMessageType.System);
+                        //}
+                   // }
+
+                    //return;
+                    //continue;
                 }
                 else
                 {
@@ -1695,82 +1809,92 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private long _lastSeqNum = -1;
 
         private DateTime _lastTimeMd = DateTime.MinValue;
+     
 
-        // Метод обработки снапшота стакана
         private void SnapshotDepth(string message)
         {
-            // Десериализуем JSON-сообщение в структуру AscendexSpotDepthMessage
-            AscendexSpotDepthMessage snapshot = JsonConvert.DeserializeObject<AscendexSpotDepthMessage>(message);
+            try
+            {
+                AscendexSpotDepthMessage snapshot = JsonConvert.DeserializeObject<AscendexSpotDepthMessage>(message);
 
-            // Если данные некорректны — выходим
-            if (snapshot == null || snapshot.data == null)
-                return;
+                // Если данные некорректны — выходим
+                if (snapshot == null || snapshot.data == null)
+                    return;
 
-            // Обновляем текущий seqnum и флаг инициализации
-            _lastSeqNum = Convert.ToInt64(snapshot.data.seqnum);
-            _snapshotInitialized = true;
+                // Обновляем текущий seqnum и флаг инициализации
+                _lastSeqNum = Convert.ToInt64(snapshot.data.seqnum);
+                _snapshotInitialized = true;
 
-            // Создаем новый объект стакана
-            MarketDepth newDepth = new MarketDepth();
-            newDepth.SecurityNameCode = snapshot.symbol;
-            newDepth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(snapshot.data.ts));
+                // Создаем новый объект стакана
+                MarketDepth newDepth = new MarketDepth();
+                newDepth.SecurityNameCode = snapshot.symbol;
+                newDepth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(snapshot.data.ts));
 
-            // Добавляем уровни BID (покупки)
-         
+                // Добавляем уровни BID (покупки)
+
                 for (int i = 0; i < snapshot.data.bids.Count && i < 25; i++)
                 {
-                var level = snapshot.data.bids[i];
-                newDepth.Bids.Add(new MarketDepthLevel
+                    var level = snapshot.data.bids[i];
+                    newDepth.Bids.Add(new MarketDepthLevel
+                    {
+                        Price = level[0].ToDecimal(),
+                        Bid = level[1].ToDecimal()
+                    });
+                }
+
+                // Добавляем уровни ASK (продажи)
+                for (int i = 0; i < snapshot.data.asks.Count && i < 25; i++)
                 {
-                    Price = level[0].ToDecimal(),
-                    Bid = level[1].ToDecimal()
-                });
-            }
+                    var level = snapshot.data.asks[i];
+                    newDepth.Asks.Add(new MarketDepthLevel
+                    {
+                        Price = level[0].ToDecimal(),
+                        Ask = level[1].ToDecimal()
+                    });
+                }
+           
 
-            // Добавляем уровни ASK (продажи)
-            for (int i = 0; i < snapshot.data.asks.Count && i < 25; i++)
-            {
-                var level = snapshot.data.asks[i];
-                newDepth.Asks.Add(new MarketDepthLevel
+                newDepth.Time = DateTime.UtcNow;
+
+                // если текущее время меньше или равно предыдущему — увеличиваем _lastTimeMd
+                if (newDepth.Time <= _lastTimeMd)
                 {
-                    Price = level[0].ToDecimal(),
-                    Ask = level[1].ToDecimal()
-                });
-            }
-            newDepth.Time = ServerTime;
+                    _lastTimeMd = _lastTimeMd.AddTicks(1);
+                    newDepth.Time = _lastTimeMd;
+                }
+                else
+                {
+                    _lastTimeMd = newDepth.Time;
+                }
 
-            if (newDepth.Time < _lastTimeMd)
-            {
-                newDepth.Time = _lastTimeMd;
-            }
-            else if (newDepth.Time == _lastTimeMd)
-            {
-                _lastTimeMd = DateTime.FromBinary(_lastTimeMd.Ticks + 1);
 
-                newDepth.Time = _lastTimeMd;
-            }
-            _lastTimeMd = newDepth.Time;
-            // Передаем стакан в систему
-            MarketDepthEvent?.Invoke(newDepth);
+                // Обновляем локальное хранилище стаканов
+                var needDepth = _allDepths.Find(d => d.SecurityNameCode == newDepth.SecurityNameCode);
 
-            // Обновляем локальное хранилище стаканов
-            var needDepth = _allDepths.Find(d => d.SecurityNameCode == newDepth.SecurityNameCode);
-            if (needDepth != null)
-            {
-                _allDepths.Remove(needDepth);
+                if (needDepth != null)
+                {
+                    _allDepths.Remove(needDepth);
+                }
+                _allDepths.Add(newDepth);
+
+                MarketDepthEvent?.Invoke(newDepth.GetCopy());
             }
-            _allDepths.Add(newDepth);
+            catch (Exception error)
+            {
+                SendLogMessage(error.ToString(), LogMessageType.Error);
+            }
+
         }
 
         // Метод обновления стакана по дельте
         private void UpdateDepth(string json)
         {
             try
-            { 
+            {
                 // Десериализуем входящее сообщение
                 var update = JsonConvert.DeserializeObject<AscendexSpotDepthMessage>(json);
 
-             // Находим соответствующий стакан
+                // Находим соответствующий стакан
                 var depth = _allDepths.Find(d => d.SecurityNameCode == update.symbol);
 
                 if (depth == null)
@@ -1781,6 +1905,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (!_snapshotInitialized) return;
 
+                
                 // Проверка: если seqnum пропущен — нужно обновить снапшот
                 if (_lastSeqNum != -1 && Convert.ToInt64(update.data.seqnum) != _lastSeqNum + 1)
                 {
@@ -1790,9 +1915,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
-                _lastSeqNum = Convert.ToInt64(update.data.seqnum);
+              _lastSeqNum = Convert.ToInt64(update.data.seqnum);
 
-                depth.Time = ServerTime;
+                depth.Time = DateTime.UtcNow;
 
                 if (depth.Time < _lastTimeMd)
                 {
@@ -1805,14 +1930,36 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     depth.Time = _lastTimeMd;
                 }
 
+                _lastTimeMd = depth.Time;
+
                 // Применяем изменения
                 ApplyLevels(update.data.bids, depth.Bids, isBid: true);
                 ApplyLevels(update.data.asks, depth.Asks, isBid: false);
 
                 // Обновляем время и передаём дальше
                 depth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(update.data.ts));
-                depth.Bids = depth.Bids.OrderByDescending(x => x.Price).Take(25).ToList();
-                depth.Asks = depth.Asks.OrderBy(x => x.Price).Take(25).ToList();
+                //depth.Bids = depth.Bids.OrderByDescending(x => x.Price).Take(25).ToList();
+                //depth.Asks = depth.Asks.OrderBy(x => x.Price).Take(25).ToList();
+                // Сортировка бидов по убыванию и обрезка до 25
+                depth.Bids.Sort((a, b) => b.Price.CompareTo(a.Price));
+
+                List<MarketDepthLevel> topBids = new List<MarketDepthLevel>();
+                for (int i = 0; i < depth.Bids.Count && i < 25; i++)
+                {
+                    topBids.Add(depth.Bids[i]);
+                }
+                depth.Bids = topBids;
+
+                // Сортировка асков по возрастанию и обрезка до 25
+                depth.Asks.Sort((a, b) => a.Price.CompareTo(b.Price));
+
+                List<MarketDepthLevel> topAsks = new List<MarketDepthLevel>();
+                for (int i = 0; i < depth.Asks.Count && i < 25; i++)
+                {
+                    topAsks.Add(depth.Asks[i]);
+                }
+                depth.Asks = topAsks;
+
                 MarketDepthEvent?.Invoke(depth.GetCopy());
             }
             catch (Exception ex)
@@ -1821,10 +1968,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-       // Метод подписки на обновление стакана
+        // Метод подписки на обновление стакана
         private void SubscribeDepth(string symbol)
         {
-            WebSocket webSocketPublic  = _webSocketPublic[_webSocketPublic.Count - 1];
+            WebSocket webSocketPublic = _webSocketPublic[_webSocketPublic.Count - 1];
 
             // Проверка, открыт ли сокет
             if (webSocketPublic.ReadyState == WebSocketState.Open)
@@ -1840,11 +1987,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             // Проверка, открыт ли сокет
             if (webSocketPublic.ReadyState == WebSocketState.Open)
-             {
+            {
                 webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{symbol}\"}}}}");
             }
         }
-        
+
 
         // Метод применяет список изменений к уровням стакана
         private void ApplyLevels(List<List<string>> updates, List<MarketDepthLevel> levels, bool isBid)
