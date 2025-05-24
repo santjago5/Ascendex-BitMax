@@ -22,6 +22,15 @@ using System.Linq;
 using Tinkoff.InvestApi.V1;
 using System.Net.Sockets;
 using System.Windows.Interop;
+using System.IO;
+using ErrorEventArgs = OsEngine.Entity.WebSocketOsEngine.ErrorEventArgs;
+using Com.Lmax.Api.Internal;
+using Kraken.WebSockets;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.TaskbarClock;
+using OsEngine.Market.Servers.GateIo.GateIoFutures.Entities;
+using OsEngine.Market.Servers.Bitfinex.Json;
+using Side = OsEngine.Entity.Side;
+using System.Globalization;
 
 
 
@@ -228,8 +237,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         string symbol = securityList.data[i].symbol;
                         string price = securityList.data[i].tickSize;
+                        string domain = securityList.data[i].domain;
 
-                        if (symbol.Contains("$"))
+                        if (symbol.Contains("$") || domain.Contains("LeveragedETF"))
                         {
                             continue;
                         }
@@ -419,177 +429,74 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             return GetCandleHistory(security.NameFull, timeFrameBuilder.TimeFrameTimeSpan, true, countNeedToLoad, endTime);
         }
+
         public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
         {
-            int limit = 500; // максимум свечей за один запрос
-            List<Candle> allCandles = new List<Candle>();
-            HashSet<DateTime> uniqueTimes = new HashSet<DateTime>();
+            string timeFrame = GetInterval(tf);  // Интервал в формате API
+            int limit = 480;                     // Лимит за 1 запрос
 
-            // Получаем строковое представление таймфрейма, например "1m", "5m"
-            string timeFrame = GetInterval(tf);
-            if (timeFrame == null)
-            {
-                SendLogMessage("❌ Не удалось получить таймфрейм", LogMessageType.Error);
-                return null;
-            }
+            List<Candle> allCandles = new List<Candle>(); // Общий список свечей
+            HashSet<DateTime> uniqueTimes = new HashSet<DateTime>(); // Для исключения дубликатов
 
             int candlesLoaded = 0;
+            DateTime periodEnd = timeEnd; // Начнем с заданного конца
 
+
+            if (periodEnd > DateTime.UtcNow)
+            {
+                periodEnd = DateTime.UtcNow;
+            }
             while (candlesLoaded < countToLoad)
             {
-                int remaining = countToLoad - candlesLoaded;
-                int currentLoad = Math.Min(remaining, limit);
+                // Сколько свечей нужно запросить в этой итерации
+                int candlesToLoad = Math.Min(limit, countToLoad - candlesLoaded);
 
-                // Вычисляем стартовое время запроса
-                DateTime fromTime = timeEnd - TimeSpan.FromMinutes(tf.TotalMinutes * currentLoad);
-                SendLogMessage($"🕐 Запрос свечей: from={fromTime:yyyy-MM-dd HH:mm:ss}, to={timeEnd:yyyy-MM-dd HH:mm:ss}, need={currentLoad}", LogMessageType.System);
+                // Получаем порцию свечей до periodEnd
+                List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, periodEnd, candlesToLoad);
 
-                // Выполняем запрос к серверу
-                List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, fromTime, timeEnd, currentLoad);
-
+                // Если ошибка или пусто — прекращаем
                 if (rangeCandles == null || rangeCandles.Count == 0)
                 {
-                    SendLogMessage("⚠ Сервер вернул пустой список свечей — прерываем загрузку", LogMessageType.System);
                     break;
                 }
 
-                // Логируем границы полученных данных
-                DateTime first = rangeCandles[0].TimeStart;
-                DateTime last = rangeCandles[rangeCandles.Count - 1].TimeStart;
-                SendLogMessage($"📅 Диапазон полученных свечей: {first:yyyy-MM-dd HH:mm} — {last:yyyy-MM-dd HH:mm}", LogMessageType.System);
-
-                int beforeAdd = allCandles.Count;
-
-                // Фильтрация по уникальному времени
+                // Добавляем только уникальные свечи
                 for (int i = 0; i < rangeCandles.Count; i++)
                 {
-                    //if (uniqueTimes.Add(rangeCandles[i].TimeStart))
+                    if (uniqueTimes.Add(rangeCandles[i].TimeStart))
                     {
-                        allCandles.Insert(0, rangeCandles[i]); // вставляем в начало для хронологического порядка
+                        allCandles.Add(rangeCandles[i]);
                     }
                 }
 
-                candlesLoaded = allCandles.Count;
+                candlesLoaded += rangeCandles.Count;
 
-                SendLogMessage($"📊 Загружено всего свечей: {candlesLoaded} из {countToLoad}", LogMessageType.System);
+                // Следующий "конец" периода — начало первой свечи из этого блока
+                periodEnd = rangeCandles[0].TimeStart;
 
-
-
-                // ✅ Если все свечи загружены — выходим
-                if (candlesLoaded >= countToLoad)
+                // Если ушли раньше нужного диапазона — завершаем
+                if (periodEnd <= timeEnd - TimeSpan.FromMinutes(tf.TotalMinutes * countToLoad))
                 {
-                    SendLogMessage("✅ Все свечи загружены — выход из цикла", LogMessageType.System);
-                    break;
-                }
-
-                if (allCandles.Count == beforeAdd)
-                {
-                    SendLogMessage("⚠ Нет новых уникальных свечей — возможен конец данных, прерываем", LogMessageType.System);
-                    break;
-                }
-
-                // Сдвигаем timeEnd по первой полученной свече
-                timeEnd = first.AddMinutes(-tf.TotalMinutes);
-
-                if (fromTime <= DateTime.MinValue.AddMinutes(10))
-                {
-                    SendLogMessage("⚠ Достигнут предел времени — выход из цикла", LogMessageType.System);
                     break;
                 }
             }
 
-            // Гарантируем отсутствие дубликатов по времени
-            //allCandles = allCandles
-            //    .GroupBy(c => c.TimeStart)
-            //    .Select(g => g.First())
-            //    .ToList();
+            // Удаляем свечи позже указанного времени
+            for (int i = allCandles.Count - 1; i >= 0; i--)
+            {
+                if (allCandles[i].TimeStart > timeEnd)
+                {
+                    allCandles.RemoveAt(i);
+                }
+            }
 
-            // Обрезаем до нужного количества, если набралось больше
-            //if (allCandles.Count > countToLoad)
-            //{
-            //    allCandles = allCandles.Skip(allCandles.Count - countToLoad).ToList();
-            //}
+            // Сортировка на случай, если порядок сбился
+            allCandles.Sort((a, b) => a.TimeStart.CompareTo(b.TimeStart));
 
             return allCandles;
         }
 
 
-
-        //public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
-        //{
-        //    int limit = 490;
-
-        //    List<Candle> allCandles = new List<Candle>();
-
-        //    DateTime startTime = timeEnd - TimeSpan.FromMinutes(tf.TotalMinutes * countToLoad);
-        //    HashSet<DateTime> uniqueTimes = new HashSet<DateTime>();
-
-        //    int candlesLoaded = 0;
-        //    string timeFrame = GetInterval(tf);
-
-        //    DateTime periodEnd = startTime;
-
-        //    while (candlesLoaded < countToLoad && periodEnd < timeEnd)
-        //    {
-        //        int candlesToLoad = Math.Min(limit, countToLoad - candlesLoaded);
-        //        DateTime periodStart = startTime;
-
-        //        periodEnd = periodStart.AddMinutes(tf.TotalMinutes * candlesToLoad);
-
-        //        if (periodEnd > DateTime.UtcNow)
-        //        {
-        //            periodEnd = DateTime.UtcNow;
-        //        }
-
-        //        List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, periodStart, periodEnd, candlesToLoad);
-
-        //        if (rangeCandles == null)
-        //        {
-        //            return null;
-        //        }
-
-        //        if (rangeCandles.Count == 0)
-        //        {
-        //            return null;
-        //        }
-
-        //        for (int i = 0; i < rangeCandles.Count; i++)
-        //        {
-        //            if (uniqueTimes.Add(rangeCandles[i].TimeStart))
-        //            {
-        //                allCandles.Add(rangeCandles[i]);
-        //            }
-        //        }
-
-        //        int actualCandlesLoaded = rangeCandles.Count;
-
-        //        candlesLoaded += actualCandlesLoaded;
-        //        startTime = allCandles[allCandles.Count - 1].TimeStart;
-
-        //        if (periodEnd >= timeEnd)
-        //        {
-        //            break;
-        //        }
-        //    }
-
-        //    for (int i = allCandles.Count - 1; i >= 0; i--)
-        //    {
-        //        if (allCandles[i].TimeStart > timeEnd)
-        //        {
-        //            allCandles.RemoveAt(i);
-        //        }
-        //    }
-
-        //    for (int i = allCandles.Count - 1; i > 0; i--)
-        //    {
-        //        if (allCandles[i].TimeStart == allCandles[i - 1].TimeStart)
-        //        {
-        //            allCandles.RemoveAt(i);
-        //        }
-        //    }
-
-        //    return allCandles;
-        //}
         public List<Trade> GetTickDataToSecurity(Security security, DateTime startTime, DateTime endTime, DateTime actualTime)
         {
             return null;
@@ -631,8 +538,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 timeFrameMinutes == 240 ||
                 timeFrameMinutes == 360 ||
                 timeFrameMinutes == 720 ||
-                timeFrameMinutes == 1440 )
-            
+                timeFrameMinutes == 1440)
+
             {
                 return true;
             }
@@ -683,20 +590,16 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private RateGate _rateGateCandleHistory = new RateGate(1, TimeSpan.FromMilliseconds(2100));
 
-        private List<Candle> CreateQueryCandles(string symbol, string interval, DateTime startTime, DateTime endTime, int limit)
+        private List<Candle> CreateQueryCandles(string symbol, string interval/*, DateTime startTime*/, DateTime endTime, int limit)
         {
             _rateGateCandleHistory.WaitToProceed();
 
             try
             {
-                long startDate = TimeManager.GetTimeStampMilliSecondsToDateTime(startTime);
+                // long startDate = TimeManager.GetTimeStampMilliSecondsToDateTime(startTime);
                 long endDate = TimeManager.GetTimeStampMilliSecondsToDateTime(endTime);
 
-
-                // string _apiPath = $"/api/pro/v1/barhist?symbol={symbol}&interval={interval}&start={startDate}&end={endDate}&n={limit}";
-
-                string _apiPath = $"/api/pro/v1/barhist?symbol={symbol}&interval={interval}&end={endDate}&n={limit}";
-
+                string _apiPath = $"/api/pro/v1/barhist?symbol={symbol}&interval={interval}&n={limit}&to={endDate}";
 
                 IRestResponse response = CreatePublicQuery(_apiPath, Method.GET/*, _myProxy*/);
 
@@ -1090,7 +993,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage(error.ToString(), LogMessageType.Error);
             }
         }
-        private void WebSocketPublicNew_OnError(object sender, ErrorEventArgs e)
+        private void WebSocketPublicNew_OnError(object sender, ErrorEventArgs e)///переделать как в битфайнекс
         {
             if (e.Exception != null)
             {
@@ -1167,21 +1070,23 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     SendLogMessage("Authorization to private channels", LogMessageType.System);
                 }
 
-                else if (e.IsText && e.Data.Contains("ping"))
+                else if (e.Data.Contains("\"m\":\"ping\"")) //(e.IsText && e.Data.Contains("ping"))
                 {
-                       _webSocketPrivate.Send("pong");
+                    _webSocketPrivate.Send("pong");
+
                     //    return;
+
                     //for (int i = 0; i < _webSocketPrivate.Count; i++)
                     //{
                     //    WebSocket socket = _webSocketPrivate[i];
 
-                        //if (socket.ReadyState == WebSocketState.Open)
-                        //{
-                        //    //  socket.Send("pong");
-                            //SendPong(socket);
-                            //SendLogMessage("📡 Отправлен pong на ping", LogMessageType.System);
-                        //}
-                   // }
+                    //if (socket.ReadyState == WebSocketState.Open)
+                    //{
+                    //    //  socket.Send("pong");
+                    //SendPong(socket);
+                    //SendLogMessage("📡 Отправлен pong на ping", LogMessageType.System);
+                    //}
+                    // }
 
                     //return;
                     //continue;
@@ -1211,129 +1116,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
         #endregion
-
-
-        #region  7 WebSocket events
-
-
-        //private void WebSocketPrivate_Opened(object sender, EventArgs e)
-        //{
-        //    try
-        //    {
-        //        string fullPath = "wss://ascendex.com/1/api/pro/v1/stream";
-
-        //        GenerateAuthenticate();
-
-
-        //        try
-        //        {
-        //            string apiPath = fullPath.Substring(fullPath.LastIndexOf('/') + 1);// для подписи
-        //            long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        //            string message = timestamp + "+" + apiPath;
-        //            string signature = GenerateSignature(_secretKey, message);
-
-        //            var authPayload = new
-        //            {
-        //                op = "auth",
-        //                //id = "abc123",
-        //                t = timestamp,
-        //                key = _publicKey,
-        //                sig = signature
-        //            };
-
-        //            string json = JsonConvert.SerializeObject(authPayload);
-
-        //            _webSocketPrivate.Send(json);
-
-        //        }
-        //        catch (Exception exception)
-        //        {
-        //            SendLogMessage(exception.ToString(), LogMessageType.Error);
-        //        }
-
-
-        //        CheckActivationSockets();
-
-        //        SendLogMessage("Connection to private data is Open", LogMessageType.System);
-        //    }
-        //    catch (Exception exception)
-        //    {
-        //        SendLogMessage(exception.ToString(), LogMessageType.Error);
-        //    }
-        //}
-
-
-        //private void WebSocketPrivate_Closed(object sender, CloseEventArgs e)
-        //{
-        //    try
-        //    {
-        //        Disconnect();
-        //    }
-        //    catch (Exception exception)
-        //    {
-        //        SendLogMessage(exception.ToString(), LogMessageType.Error);
-        //    }
-
-        //    SendLogMessage($"Connection Closed by  AscendexSpot. WebSocket Private closed. Code: {e.Code}", LogMessageType.Error);
-        //}
-
-        //private void WebSocketPrivate_Error(object sender, ErrorEventArgs e)
-        //{
-        //    try
-        //    {
-        //        //if (!string.IsNullOrEmpty(e.Message))
-        //        //{
-        //        //    SendLogMessage($"WebSocket private Error: {e.Message}", LogMessageType.Error);
-        //        //}
-        //        if (e.Exception != null)
-        //        {
-        //            SendLogMessage(e.Exception.ToString(), LogMessageType.Error);
-        //        }
-        //    }
-        //    catch (Exception exception)
-        //    {
-        //        SendLogMessage(exception.ToString(), LogMessageType.Error);
-        //    }
-        //}
-
-        //private void WebSocketPrivate_MessageReceived(object sender, MessageEventArgs e)
-        //{
-        //    try
-        //    {
-        //        if (ServerStatus == ServerConnectStatus.Disconnect
-        //            || e?.Data == null
-        //            || string.IsNullOrEmpty(e?.Data))
-        //        {
-        //            return;
-        //        }
-
-        //        if (FIFOListWebSocketPrivateMessage == null)
-        //        {
-        //            return;
-        //        }
-
-        //        if (e.Data.Contains("pong"))
-        //        {
-
-        //        }
-
-        //        if (e.Data.Contains("\"m\":\"auth\"") && e.Data.Contains("\"code\":0"))
-        //        {
-
-
-        //        }
-
-        //        FIFOListWebSocketPrivateMessage?.Enqueue(e.Data);
-        //    }
-
-        //    catch (Exception exception)
-        //    {
-        //        SendLogMessage(exception.ToString(), LogMessageType.Error);
-        //    }
-        //}
-
-
-
 
 
         private string _socketActivateLocker = "socketActivateLocker";
@@ -1384,7 +1166,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
 
-        #endregion
 
         #region 8 WebSocket check alive
         private void CheckAliveWebSocket()
@@ -1809,7 +1590,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private long _lastSeqNum = -1;
 
         private DateTime _lastTimeMd = DateTime.MinValue;
-     
+
 
         private void SnapshotDepth(string message)
         {
@@ -1852,7 +1633,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         Ask = level[1].ToDecimal()
                     });
                 }
-           
+
 
                 newDepth.Time = DateTime.UtcNow;
 
@@ -1905,7 +1686,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (!_snapshotInitialized) return;
 
-                
+
                 // Проверка: если seqnum пропущен — нужно обновить снапшот
                 if (_lastSeqNum != -1 && Convert.ToInt64(update.data.seqnum) != _lastSeqNum + 1)
                 {
@@ -1915,7 +1696,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
-              _lastSeqNum = Convert.ToInt64(update.data.seqnum);
+                _lastSeqNum = Convert.ToInt64(update.data.seqnum);
 
                 depth.Time = DateTime.UtcNow;
 
@@ -2187,27 +1968,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-        private OrderStateType GetOrderState(string orderStateResponse)
-        {
-            if (orderStateResponse.StartsWith("ACTIVE"))
-            {
-                return OrderStateType.Active;
-            }
-            else if (orderStateResponse.StartsWith("EXECUTED"))
-            {
-                return OrderStateType.Done;
-            }
-            else if (orderStateResponse.StartsWith("PARTIALLY FILLED"))
-            {
-                return OrderStateType.Partial;
-            }
-            else if (orderStateResponse.StartsWith("CANCELED"))
-            {
-                return OrderStateType.Cancel;
-            }
 
-            return OrderStateType.None;
-        }
         private void UpdatePortfolio(WebSocketMessage<AscendexSpotPortfolio> json)
         {
             try
@@ -2263,8 +2024,58 @@ namespace OsEngine.Market.Servers.AscendexSpot
         #region  11 Trade
         public void SendOrder(Order order)
         {
-            //POST <account-group>/api/pro/v1/{account - category}/order
+            try
+            {
+                string accountGroup = GetAccountGroup();
+                long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
+                string body = $"{{" +
+                              $"\"id\": \"{order.NumberUser.ToString()}\", " +
+                              $"\"time\": {time}, " +
+                              $"\"symbol\": \"{order.SecurityNameCode}\", " +
+                              $"\"orderPrice\": \"{order.Price.ToString(CultureInfo.InvariantCulture)}\", " +
+                              $"\"orderQty\": \"{order.Volume.ToString(CultureInfo.InvariantCulture)}\", " +
+                              $"\"orderType\": \"{order.TypeOrder.ToString()}\", " +
+                              $"\"side\": \"{order.Side.ToString()}\"" +
+                              $"}}";
+
+
+                string fullPath = $"/{accountGroup}/api/pro/v1/cash/order";
+
+                IRestResponse rawResponse = CreatePrivateQuery(fullPath, body, accountGroup, null, Method.POST);
+
+                if (rawResponse == null)
+                {
+                    SendLogMessage("Deserialization resulted in null", LogMessageType.Error);
+                    return;
+                }
+
+                AscendexSpotOrderErrorResponse error = JsonConvert.DeserializeObject<AscendexSpotOrderErrorResponse>(rawResponse.Content);
+
+                string message = error.message;
+                string code = error.code;
+
+                AscendexSpotOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(rawResponse.Content);
+
+                if (rawResponse.StatusCode == HttpStatusCode.OK && response.code != "0")
+                {
+
+                    SendLogMessage($"Error : {message}, StatusCode {code}", LogMessageType.Error);
+                    order.State = OrderStateType.Fail;
+                    MyOrderEvent?.Invoke(order);
+                }
+
+                //order id =a19702856a2cU3283712985gh5aOlY8E
+
+                else if (response != null && response.code == "0" && response.data != null)
+                {
+                    SendLogMessage($" Order send: status {response.data.status} OrderId {response.data.info.orderId}", LogMessageType.Error);
+                }
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage("Order send exception " + exception.ToString(), LogMessageType.Error);
+            }
         }
         public void CancelAllOrders()
         {
@@ -2278,24 +2089,21 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             IRestResponse response = CreatePrivateQuery(path, accountGroup, accountCategory, null, Method.DELETE/*, _myProxy*/);
 
-
-
             if (response == null)
             {
-                Console.WriteLine("❌ Ошибка: нет ответа от сервера.");
+
+                SendLogMessage("Deserialization resulted in null", LogMessageType.Error);
                 return;
             }
 
-            if (response.StatusCode == HttpStatusCode.OK)
+            if (response.StatusCode == HttpStatusCode.OK )
             {
-                Console.WriteLine("📩 Ответ на отмену ордера:");
-                Console.WriteLine(response.Content);
-
+              
                 AscendexSpotCancelOrderResponse cancelResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
 
-                if (cancelResult != null && cancelResult.code == 0)
+                if (cancelResult != null && cancelResult.code == "0")
                 {
-                    Console.WriteLine($"✅ Ордера отменены: {cancelResult.data.orderId} | Статус: {cancelResult.data.status}");
+                    Console.WriteLine($"All orders cancelled: {cancelResult.data.orderId} | Status: {cancelResult.data.status}");
                 }
                 else
                 {
@@ -2399,7 +2207,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         public void ChangeOrderPrice(Order order, decimal newPrice)
         {
-            throw new NotImplementedException();
+            return;
         }
 
         public void GetAllActivOrders()
@@ -2411,6 +2219,33 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             //GET <account-group>/api/pro/v1/{account-category}/order/status?orderId={orderId}
         }
+
+        private OrderStateType GetOrderState(string orderStateResponse)
+        {
+            if (orderStateResponse.StartsWith("Ack"))
+            {
+                return OrderStateType.Active;
+            }
+            else if (orderStateResponse.StartsWith("Done"))
+            {
+                return OrderStateType.Done;
+            }
+            else if (orderStateResponse.StartsWith("PartiallyFilled"))
+            {
+                return OrderStateType.Partial;
+            }
+            else if (orderStateResponse.StartsWith("Filled"))
+            {
+                return OrderStateType.Fail;
+            }
+            else if (orderStateResponse.StartsWith("Canceled"))
+            {
+                return OrderStateType.Cancel;
+            }
+
+            return OrderStateType.None;
+        }
+
 
         #endregion
 
@@ -2494,8 +2329,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 // если передаётся тело запроса
                 if (body != null && method != Method.GET)
                 {
-                    string jsonBody = JsonConvert.SerializeObject(body);
-                    request.AddParameter("application/json", jsonBody, ParameterType.RequestBody);
+                    //string jsonBody = JsonConvert.SerializeObject(body);
+                    request.AddParameter("application/json", body, ParameterType.RequestBody);
                 }
                 IRestResponse response = client.Execute(request);
 

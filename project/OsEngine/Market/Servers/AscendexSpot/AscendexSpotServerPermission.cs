@@ -99,7 +99,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             public bool DataFeedTfTickCanLoad
             {
-                get { return true; }
+                get { return false; }
             }
 
             public bool DataFeedTfMarketDepthCanLoad
@@ -118,7 +118,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             public bool IsTradeServer
             {
-                get { return true; }
+                get { return false; }
             }
 
             public bool IsCanChangeOrderPrice

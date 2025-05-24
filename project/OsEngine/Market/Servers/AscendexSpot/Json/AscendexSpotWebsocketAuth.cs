@@ -18,7 +18,7 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
 
     class AscendexSpotCancelOrderResponse
     {
-        public int code { get; set; }
+        public string code { get; set; }
         public AscendexSpotCancelOrderData data { get; set; }
     }
 
