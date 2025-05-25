@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
@@ -43,6 +44,14 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string symbol { get; set; }           // Торговая пара / Trading pair
         public string execInst { get; set; }         // Инструкция исполнения / Execution instruction
     }
+    public class AscendexSpotOpenOrdersResponse
+    {
+        public string ac{ get; set; }                     //      AccountCategory 
+        public string accountId { get; set; }
+        public string code { get; set; }
+        public List<AscendexSpotOrderInfo> data { get; set; }
+    }
+
     public class AscendexSpotOrderErrorResponse
     {
         public string code { get; set; }         // Код ошибки / Error code

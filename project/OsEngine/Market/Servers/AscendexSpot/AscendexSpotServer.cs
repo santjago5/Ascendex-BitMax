@@ -18,19 +18,11 @@ using Security = OsEngine.Entity.Security;
 using Candle = OsEngine.Entity.Candle;
 using Trade = OsEngine.Entity.Trade;
 using OsEngine.Entity.WebSocketOsEngine;
-using System.Linq;
-using Tinkoff.InvestApi.V1;
-using System.Net.Sockets;
-using System.Windows.Interop;
-using System.IO;
 using ErrorEventArgs = OsEngine.Entity.WebSocketOsEngine.ErrorEventArgs;
-using Com.Lmax.Api.Internal;
-using Kraken.WebSockets;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.TaskbarClock;
-using OsEngine.Market.Servers.GateIo.GateIoFutures.Entities;
-using OsEngine.Market.Servers.Bitfinex.Json;
 using Side = OsEngine.Entity.Side;
 using System.Globalization;
+using OsEngine.Market.Servers.Transaq.TransaqEntity;
+
 
 
 
@@ -293,7 +285,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             string fullPath = $"/api/pro/v1/info";
 
-            IRestResponse response = CreatePrivateQuery(fullPath, null, null, null, Method.GET, null);
+            IRestResponse response = CreatePrivateQuery(fullPath, null, null, null, Method.GET/*, null*/);
 
             if (response == null || response.StatusCode != HttpStatusCode.OK)
             {
@@ -371,6 +363,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         position.SecurityNameCode = wallets.data[i].asset;
                         position.ValueBegin = wallets.data[i].totalBalance.ToDecimal();
                         position.ValueCurrent = wallets.data[i].availableBalance.ToDecimal();
+                        position.ValueBlocked = position.ValueBegin - position.ValueCurrent;
 
                         portfolio.SetNewPosition(position);
 
@@ -675,7 +668,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             (candle.h.ToDecimal() == 0 || (candle.l).ToDecimal() == 0 ||
                             (candle.v).ToDecimal() == 0))
                         {
-                            //SendLogMessage("Candle data contains zero values", LogMessageType.Error);
+                        
                             continue;
                         }
 
@@ -1322,8 +1315,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
 
                 }
+                if (_webSocketPrivate != null)
+                {
+                    _webSocketPrivate.Send("{\"op\":\"sub\",\"ch\":\"order:cash\"}");
 
-
+                }
             }
             catch (Exception exception)
             {
@@ -1353,11 +1349,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                                     {
                                         string symbol = _subscribledSecutiries[i2];
 
-                                        // Отписываемся от трейдов
                                         webSocketPublic.Send($"{{\"op\":\"unsub\",\"ch\":\"trades:{symbol}\"}}");
-
-                                        // Отписываемся от стакана
                                         webSocketPublic.Send($"{{\"op\":\"unsub\",\"ch\":\"depth:{symbol}\"}}");
+                                        webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{symbol}\"}}");
                                     }
                                 }
                             }
@@ -1562,6 +1556,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     else if (message.Contains("\"m\":\"order\""))
                     {
                         var orderMessage = JsonConvert.DeserializeObject<WebSocketMessage<AscendexSpotOrderData>>(message);
+                    //   if (cancel - all);
                         UpdateOrder(orderMessage);
 
                     }
@@ -1749,18 +1744,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-        // Метод подписки на обновление стакана
-        private void SubscribeDepth(string symbol)
-        {
-            WebSocket webSocketPublic = _webSocketPublic[_webSocketPublic.Count - 1];
-
-            // Проверка, открыт ли сокет
-            if (webSocketPublic.ReadyState == WebSocketState.Open)
-            {
-                webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{symbol}\"}}");
-            }
-        }
-
+     
         // Метод запроса снапшота стакана
         private void RequestSnapshot(string symbol)
         {
@@ -1941,26 +1925,24 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (json != null && json.m == "order" && json.data != null)
                 {
+                    //action": "cancel-Order",
+                    //action": "cancel-All"
+                    Order updateOrder = new Order();
 
+                    updateOrder.SecurityNameCode = json.data.s;
+                    updateOrder.NumberMarket = json.data.orderId;
+                    updateOrder.State = GetOrderState(json.data.st);
+                    updateOrder.Side = (json.data.sd.ToLower() == "buy") ? Side.Buy : Side.Sell;
+                    updateOrder.TypeOrder = (json.data.ot.ToLower() == "limit") ? OrderPriceType.Limit : OrderPriceType.Market;
+                    updateOrder.Price = (json.data.p).ToDecimal();
+                    updateOrder.Volume = (json.data.q).ToDecimal();
+                    updateOrder.TimeCreate = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
+                    updateOrder.ServerType = ServerType.AscendexSpot;
+
+                    updateOrder.PortfolioNumber = "AscendexSpotPortfolio";
+
+                    MyOrderEvent?.Invoke(updateOrder);
                 }
-
-                Order updateOrder = new Order();
-
-                updateOrder.SecurityNameCode = json.data.s;
-                updateOrder.NumberMarket = json.data.orderId;
-                updateOrder.State = GetOrderState(json.data.st);
-                updateOrder.Side = (json.data.sd.ToLower() == "buy") ? Side.Buy : Side.Sell;
-                updateOrder.TypeOrder = (json.data.ot.ToLower() == "limit") ? OrderPriceType.Limit : OrderPriceType.Market;
-                updateOrder.Price = (json.data.p).ToDecimal();
-                updateOrder.Volume = (json.data.q).ToDecimal();
-                updateOrder.TimeCreate = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
-                updateOrder.ServerType = ServerType.AscendexSpot;
-
-                updateOrder.PortfolioNumber = "AscendexSpotPortfolio";
-
-                MyOrderEvent?.Invoke(updateOrder);
-
-
             }
             catch (Exception exception)
             {
@@ -2059,17 +2041,23 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (rawResponse.StatusCode == HttpStatusCode.OK && response.code != "0")
                 {
-
                     SendLogMessage($"Error : {message}, StatusCode {code}", LogMessageType.Error);
                     order.State = OrderStateType.Fail;
                     MyOrderEvent?.Invoke(order);
                 }
 
-                //order id =a19702856a2cU3283712985gh5aOlY8E
-
                 else if (response != null && response.code == "0" && response.data != null)
                 {
-                    SendLogMessage($" Order send: status {response.data.status} OrderId {response.data.info.orderId}", LogMessageType.Error);
+                    SendLogMessage($" Order send: status {response.data.status} OrderId :{response.data.info.orderId}", LogMessageType.Error);
+                    order.NumberMarket = response.data.info.orderId;
+                    order.State = GetOrderState(response.data.status);
+                    MyOrderEvent?.Invoke(order);
+                }
+                else
+                {
+                    SendLogMessage($"Error Send Order : {message}, StatusCode {code}", LogMessageType.Error);
+                    order.State = OrderStateType.Fail;
+                    MyOrderEvent?.Invoke(order);
                 }
             }
             catch (Exception exception)
@@ -2078,100 +2066,115 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
         public void CancelAllOrders()
-        {
-            //DELETE <account-group>/api/pro/v1/{account-category}/order/all
-            string accountGroup = GetAccountGroup();
-
-            string accountCategory = "cash";
-
-            string path = $"/{accountGroup}/api/pro/v1/{accountCategory}/order/all";
-
-
-            IRestResponse response = CreatePrivateQuery(path, accountGroup, accountCategory, null, Method.DELETE/*, _myProxy*/);
-
-            if (response == null)
+        {//{\"code\":0,\"data\":{\"accountId\":\"cshANLX2if7MJZaPkp5EMWUZLYNwIhJv\",\"ac\":\"CASH\",\"action\":\"cancel-all\",\"status\":\"Ack\",\"info\":{\"symbol\":\"\",\"orderType\":\"\",\"timestamp\":1748178601786,\"id\":\"\",\"orderId\":\"\"}}}"
+            try
             {
+                string accountGroup = GetAccountGroup();
 
-                SendLogMessage("Deserialization resulted in null", LogMessageType.Error);
-                return;
-            }
+                string accountCategory = "cash";
 
-            if (response.StatusCode == HttpStatusCode.OK )
-            {
-              
-                AscendexSpotCancelOrderResponse cancelResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
+                string path = $"/{accountGroup}/api/pro/v1/{accountCategory}/order/all";
 
-                if (cancelResult != null && cancelResult.code == "0")
+
+                IRestResponse response = CreatePrivateQuery(path,null,accountGroup, accountCategory,  Method.DELETE/*, _myProxy*/);
+
+                if (response == null)
                 {
-                    Console.WriteLine($"All orders cancelled: {cancelResult.data.orderId} | Status: {cancelResult.data.status}");
+                    return;
+                }
+
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    AscendexSpotCancelOrderResponse cancelResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
+
+                    if (cancelResult != null && cancelResult.code == "0")
+                    {
+                        SendLogMessage($"All active orders cancelled: {cancelResult.data.orderId} ,  Status: {cancelResult.data.status}", LogMessageType.Error);
+                        GetPortfolios();
+                    }
+                    else
+                    {
+                        SendLogMessage($"Error: code={cancelResult?.code}", LogMessageType.Error);
+                    }
                 }
                 else
                 {
-                    Console.WriteLine($"❌ Ошибка отмены: code={cancelResult?.code}");
+                    SendLogMessage($"Error Order canceled {response.StatusCode}", LogMessageType.Error);
                 }
             }
-            else
+            catch (Exception exception)
             {
-                Console.WriteLine("❌ HTTP ошибка: " + response.StatusCode);
-                Console.WriteLine(response.Content);
+                SendLogMessage("Order canceled exception " + exception.ToString(), LogMessageType.Error);
             }
-
         }
-        // получаем номер группы
-        public void CancelOrder(Order order)
-        { // DELETE < account - group >/ api / pro / v1 /{ account - category}/ order
 
-            string accountGroup = GetAccountGroup();
-
-            string path = $"/{accountGroup}/api/pro/v1/cash/order";
-
-            var body = new
+        public void CancelOrder(Order order)//////////////////
+        {
+            try
             {
-                orderId = order.NumberMarket,
-                symbol = order.SecurityNameCode,
-                time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            };
+                string accountGroup = GetAccountGroup();
 
-            IRestResponse response = CreatePrivateQuery(path, body, accountGroup, null, Method.DELETE/*, _myProxy*/);
+                string path = $"/{accountGroup}/api/pro/v1/cash/order";
 
-            if (response == null)
-            {
-                Console.WriteLine("❌ Ошибка: нет ответа от сервера.");
-                return;
-            }
+                long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            if (response.StatusCode == HttpStatusCode.OK)
-            {
+                string body = $"{{" +
+                              $"\"orderId\": \"{order.NumberMarket}\", " +
+                              $"\"symbol\": \"{order.SecurityNameCode}\", " +
+                              $"\"time\": {time}" +
+                              $"}}";
 
-                Console.WriteLine(response.Content);
+                IRestResponse response = CreatePrivateQuery(path, body, accountGroup, null, Method.DELETE/*, _myProxy*/);
 
-                AscendexSpotCancelOrderResponse cancelResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
-
-                if (cancelResult != null && cancelResult.code == 0)
+                if (order.State == OrderStateType.Cancel)
                 {
-                    Console.WriteLine($"✅ Ордер отменён: {cancelResult.data.orderId} | Статус: {cancelResult.data.status}");
+                    return;
+                }
+
+                if (response == null)
+                {
+                  //  GetOrderStatus(order);
+                   // SendLogMessage("CancelOrder> Deserialization resulted in null", LogMessageType.Error);
+                    return;
+                }
+
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    AscendexSpotCancelOrderResponse cancelResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
+
+                    if (cancelResult != null && cancelResult.code == "0")
+                    {
+                        GetOrderStatus(order);
+                        Console.WriteLine($"✅ Ордер отменён: {cancelResult.data.orderId} | Статус: {cancelResult.data.status}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"❌ Ошибка отмены: code={cancelResult?.code}");
+                    }
                 }
                 else
                 {
-                    Console.WriteLine($"❌ Ошибка отмены: code={cancelResult?.code}");
+                    GetOrderStatus(order);
+                    SendLogMessage($" Error Order cancellation:  {response.Content},{response.ErrorMessage}", LogMessageType.Error);
                 }
             }
-            else
+
+            catch (Exception exception)
             {
-                Console.WriteLine("❌ HTTP ошибка: " + response.StatusCode);
-                Console.WriteLine(response.Content);
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
         }
 
         public void CancelAllOrdersToSecurity(Security security)
         {
-
             string accountGroup = GetAccountGroup();
             string accountCategory = "cash";
 
             string path = $"/{accountGroup}/api/pro/v1/{accountCategory}/order/all";
 
-            var body = new { symbol = security.Name };
+            string body = $"{{" +
+                          $"\"symbol\": \"{security.Name}\"" +
+                          $"}}";
 
 
             IRestResponse response = CreatePrivateQuery(path, body, accountGroup, accountCategory, Method.DELETE/*, _myProxy*/);
@@ -2189,7 +2192,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 AscendexSpotCancelOrderResponse cancelResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
 
-                if (cancelResult != null && cancelResult.code == 0)
+                if (cancelResult != null && cancelResult.code == "0")
                 {
                     Console.WriteLine($"✅ Ордера отменены: {cancelResult.data.orderId} | Статус: {cancelResult.data.status}");
                 }
@@ -2200,7 +2203,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             else
             {
-                Console.WriteLine("❌ HTTP ошибка: " + response.StatusCode);
+                Console.WriteLine(" Error: " + response.StatusCode);
                 Console.WriteLine(response.Content);
             }
         }
@@ -2212,17 +2215,201 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         public void GetAllActivOrders()
         {
-            //GET <account-group>/api/pro/v1/{account-category}/order/open
+            List<Order> orders = new List<Order>();
+
+            string accountGroup = GetAccountGroup();
+            string accountCategory = "cash";
+            string path = $"/{accountGroup}/api/pro/v1/cash/order/open";
+
+            IRestResponse response = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET/*, _myProxy*/);
+
+            if (response == null)
+            {
+                SendLogMessage($" {response.StatusCode}", LogMessageType.Error);
+                return;
+            }
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                AscendexSpotOpenOrdersResponse result = JsonConvert.DeserializeObject<AscendexSpotOpenOrdersResponse>(response.Content);
+
+                if (result != null && result.code == "0")
+                {
+                    for (int i = 0; i < result.data.Count; i++)
+                    {
+                        AscendexSpotOrderInfo order = result.data[i];
+                        Order activeOrder = new Order();
+                        activeOrder.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(order.lastExecTime));
+                       
+                        activeOrder.ServerType = ServerType.AscendexSpot;
+                        activeOrder.SecurityNameCode = order.symbol;
+
+                      
+                        activeOrder.NumberMarket = order.orderId;
+                        activeOrder.Side = order.side == "Buy" ? Side.Buy : Side.Sell;
+                        activeOrder.State = GetOrderState(order.status); 
+                       
+                        activeOrder.Volume = (order.orderQty).ToDecimal();
+                        activeOrder.Price = order.price.ToDecimal();
+                        activeOrder.PortfolioNumber = "AscendexSpotPortfolio";
+
+                        orders.Add(activeOrder);
+
+                        SendLogMessage($"OrderId: {order.orderId}, Symbol: {order.symbol}, Side: {order.side}, Qty: {order.orderQty}, Price: { order.price}", LogMessageType.Error);
+                    }
+
+                    SendLogMessage($"Order Status: {result.code} | Статус: {response}", LogMessageType.Error);
+                   
+                }
+                else
+                {
+                    SendLogMessage($" GetOrderStatus Error: code={result?.code}, {response.ErrorMessage}", LogMessageType.Error);
+                }
+            }
+            else
+            {
+                SendLogMessage($" HTTP Error:{ response.StatusCode},{response.Content}", LogMessageType.Error);
+                
+            }
+            if (orders == null
+              || orders.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < orders.Count; i++)
+            {
+                MyOrderEvent?.Invoke(orders[i]);
+            }
         }
 
         public void GetOrderStatus(Order order)
         {
-            //GET <account-group>/api/pro/v1/{account-category}/order/status?orderId={orderId}
+            string accountGroup = GetAccountGroup();
+            string accountCategory = "cash";
+
+           string path = $"/{accountGroup}/api/pro/v1/cash/order/status?orderId={order.NumberMarket}";
+           
+
+            IRestResponse response = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET/*, _myProxy*/);
+
+            if (response == null)
+            {
+                SendLogMessage($" {response.StatusCode}", LogMessageType.Error);
+                return;
+            }
+
+            if (response.StatusCode == HttpStatusCode.OK )
+            {
+                AscendexSpotCancelOrderResponse statusResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
+
+                if (statusResult != null && statusResult.code == "0")
+                {
+                    Console.WriteLine($"Order Status: {statusResult.data.orderId} | Статус: {statusResult.data.status}");
+                    MyOrderEvent?.Invoke(order);
+
+                    //if (order.State == OrderStateType.Done
+                    //|| order.State == OrderStateType.Partial)
+                    //{
+                    //    CreateMyTrade(order.SecurityNameCode, order.NumberUser);
+                    //}
+
+                }
+                else
+                {
+                    SendLogMessage($" GetOrderStatus Error: code={statusResult?.code}, {response.ErrorMessage}", LogMessageType.Error); 
+                }
+            }
+            else
+            {
+                SendLogMessage($"HTTP Error:{ response.StatusCode},{response.Content}", LogMessageType.Error);
+               
+            }
+
         }
+        private RateGate _rateGateOrder = new RateGate(90, TimeSpan.FromMinutes(1));
+        //private void CreateMyTrade(string nameSec, int numberUser)
+        //{
+        //    _rateGateOrder.WaitToProceed();
+
+        //    try
+        //    {
+              ////  string _apiPath = $"v2/auth/r/trades/{nameSec}/hist";
+
+              //  IRestResponse response = CreatePrivateQuery(_apiPath, Method.POST, null);
+
+              //  if (response.StatusCode == HttpStatusCode.OK)
+              //  {
+              //      List<List<string>> data = JsonConvert.DeserializeObject<List<List<string>>>(response.Content);
+
+              //      if (data != null && data.Count > 0)
+              //      {
+              //          for (int i = 0; i < data.Count; i++)
+              //          {
+              //              List<string> tradeData = data[i];
+
+              //              if (tradeData == null)
+              //              {
+              //                  return;
+              //              }
+
+              //              int userNumber = 0;
+
+        //                    try
+        //                    {
+        //                        userNumber = Convert.ToInt32(tradeData[11]);
+        //                    }
+        //                    catch
+        //                    {
+        //                        // ignore
+        //                    }
+
+        //                    if (numberUser == userNumber)
+        //                    {
+        //                        MyTrade myTrade = new MyTrade();
+
+        //                        myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(tradeData[2]));
+        //                        myTrade.SecurityNameCode = Convert.ToString(tradeData[1]);
+        //                        myTrade.NumberOrderParent = (tradeData[3]).ToString();
+        //                        myTrade.Price = (tradeData[7]).ToString().ToDecimal();
+        //                        myTrade.NumberTrade = (tradeData[0]).ToString();
+        //                        decimal volume = (tradeData[4]).ToString().ToDecimal();
+        //                        myTrade.Side = volume > 0 ? Side.Buy : Side.Sell;
+
+        //                        if (volume < 0)
+        //                        {
+        //                            volume = Math.Abs(volume);
+        //                        }
+
+        //                        string commissionSecName = tradeData[10].ToString();
+
+        //                        if (myTrade.SecurityNameCode.StartsWith("t" + commissionSecName))
+        //                        {
+        //                            myTrade.Volume = volume + tradeData[9].ToString().ToDecimal();
+        //                        }
+        //                        else
+        //                        {
+        //                            myTrade.Volume = volume;
+        //                        }
+
+        //                        MyTradeEvent?.Invoke(myTrade);
+        //                    }
+        //                }
+        //            }
+        //        }
+        //        else
+        //        {
+        //            SendLogMessage($"CreateMyTrade>. Http State Code: {response.StatusCode}, Content: {response.Content}", LogMessageType.Error);
+        //        }
+        //    }
+        //    catch (Exception exception)
+        //    {
+        //        SendLogMessage(exception.ToString(), LogMessageType.Error);
+        //    }
+        //}
 
         private OrderStateType GetOrderState(string orderStateResponse)
         {
-            if (orderStateResponse.StartsWith("Ack"))
+            if (orderStateResponse.StartsWith("New"))//ACCEPT,ack
             {
                 return OrderStateType.Active;
             }
@@ -2230,11 +2417,16 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 return OrderStateType.Done;
             }
+            else if (orderStateResponse.StartsWith("Filled"))
+            {
+                return OrderStateType.Done;
+            }
             else if (orderStateResponse.StartsWith("PartiallyFilled"))
             {
                 return OrderStateType.Partial;
             }
-            else if (orderStateResponse.StartsWith("Filled"))
+
+            else if (orderStateResponse.StartsWith("Rejected"))
             {
                 return OrderStateType.Fail;
             }
@@ -2242,8 +2434,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 return OrderStateType.Cancel;
             }
+            if (orderStateResponse.StartsWith("Ack"))
+            {
+                return OrderStateType.Active;
+            }
 
-            return OrderStateType.None;
+                return OrderStateType.None;
         }
 
 
@@ -2280,62 +2476,77 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-        //public IRestResponse CreatePrivateQuery(string fullPath, object body = null, Method method = Method.GET)
-        //{
-        //    long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        //    string shortPath = fullPath.Substring(fullPath.LastIndexOf('/') + 1);
-        //    string message = timestamp + "+" + shortPath;
-        //    string signature = GenerateSignature(message, _secretKey);
 
-        //    RestClient client = new RestClient(_baseUrl);
-        //    RestRequest request = new RestRequest(fullPath, method);
+        private readonly Dictionary<string, string> SignaturePaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+           
+            ["/1/api/pro/v1/cash/order"] = "order",
+            ["/1/api/pro/v1/margin/order"] = "order",
+            ["/1/api/pro/v1/cash/order/all"] = "order/all",
+            ["/1/api/pro/v1/margin/order/all"] = "order/all",
+            ["/1/api/pro/v1/cash/order/status"] = "order/status",
+            ["/1/api/pro/v1/margin/order/status"] = "order/status",
+            ["/1/api/pro/v1/cash/order/open"] = "order/open",
+            ["/1/api/pro/v1/margin/order/open"] = "order/open",
+            ["/1/api/pro/v1/cash/order/hist/current"] = "order/hist/current",
+            ["/1/api/pro/v1/margin/order/hist/current"] = "order/hist/current",
+            ["/api/pro/data/v2/order/hist"] = "data/v2/order/hist",
+            ["/api/pro/data/v1/cash/balance/snapshot"] = "data/v1/cash/balance/snapshot",
+            ["/api/pro/data/v1/margin/balance/snapshot"] = "data/v1/margin/balance/snapshot",
+            ["/api/pro/data/v1/cash/balance/history"] = "data/v1/cash/balance/history",
+            ["/api/pro/data/v1/margin/balance/history"] = "data/v1/margin/balance/history",
+            ["/1/api/pro/v1/cash/balance"] = "balance", //[$"/{accountGroup}/api/pro/v1/cash/balance"] = "balance"
+            ["/1/api/pro/v1/margin/balance"] = "balance",
+            
+        };
 
-        //    request.AddHeader("Content-Type", "application/json");
-        //    request.AddHeader("x-auth-key", _publicKey);
-        //    request.AddHeader("x-auth-timestamp", timestamp.ToString());
-        //    request.AddHeader("x-auth-signature", signature);
+        private string BuildPrehashMessage(string fullPath, long timestamp)
+        {
+            string pathOnly = fullPath.Contains("?")
+       ? fullPath.Substring(0, fullPath.IndexOf("?", StringComparison.Ordinal))
+       : fullPath;
 
-        //    if (body != null && method != Method.GET)
-        //    {
-        //        string jsonBody = JsonConvert.SerializeObject(body);
-        //        request.AddParameter("application/json", jsonBody, ParameterType.RequestBody);
-        //    }
 
-        //    return client.Execute(request);
-        //}
+            string prehashPath;
 
-        private IRestResponse CreatePrivateQuery(string fullPath, object body = null, string accountGroup = null, string accountCategory = null, Method method = Method.GET, IWebProxy proxy = null)
+            // Если путь есть в словаре — используем его
+            if (SignaturePaths.TryGetValue(pathOnly, out prehashPath))
+            {
+                return $"{timestamp}+{prehashPath}";
+            }
+
+            // Если нет — извлекаем всё после /v1/
+            int idx = fullPath.IndexOf("/v1/", StringComparison.OrdinalIgnoreCase);
+            prehashPath = (idx >= 0) ? fullPath.Substring(idx + 4) : fullPath.Trim('/');
+
+            return $"{timestamp}+{prehashPath}";
+        }
+
+        private IRestResponse CreatePrivateQuery(string fullPath,object body = null, string accountGroup = null, string accountCategory = null,  Method method = Method.GET)
         {
             try
             {
                 long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                string shortPath = fullPath.Substring(fullPath.LastIndexOf('/') + 1);// для подписи
-                string message = timestamp + "+" + shortPath;
+
+                string message = BuildPrehashMessage(fullPath, timestamp);
+
                 string signature = GenerateSignature(message, _secretKey);
 
                 RestClient client = new RestClient(_baseUrl);
-
-                //if (_myProxy != null)
-                //{
-                //    client.Proxy = _myProxy;
-                //}
-                //RestRequest request = new RestRequest(fullPath, Method.GET);
                 RestRequest request = new RestRequest(fullPath, method);
+
                 request.AddHeader("Content-Type", "application/json");
                 request.AddHeader("x-auth-key", _publicKey);
                 request.AddHeader("x-auth-timestamp", timestamp.ToString());
                 request.AddHeader("x-auth-signature", signature);
 
-                // если передаётся тело запроса
-                if (body != null && method != Method.GET)
+                if (body != null)
                 {
                     //string jsonBody = JsonConvert.SerializeObject(body);
                     request.AddParameter("application/json", body, ParameterType.RequestBody);
                 }
-                IRestResponse response = client.Execute(request);
 
-                return response;
-
+                return client.Execute(request);
             }
             catch (Exception ex)
             {
@@ -2343,8 +2554,47 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 return null;
             }
         }
+            //private IRestResponse CreatePrivateQuery(string fullPath, object body = null, string accountGroup = null, string accountCategory = null, Method method = Method.GET, IWebProxy proxy = null)
+            //{
+            //    try
+            //    {
+            //        long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            //        string shortPath = fullPath.Substring(fullPath.LastIndexOf('/') + 1);// для подписи
+            //        string message = timestamp + "+" + shortPath;
+            //        string signature = GenerateSignature(message, _secretKey);
 
-        static string GenerateSignature(string message, string secret)
+            //        RestClient client = new RestClient(_baseUrl);
+
+            //        //if (_myProxy != null)
+            //        //{
+            //        //    client.Proxy = _myProxy;
+            //        //}
+            //        //RestRequest request = new RestRequest(fullPath, Method.GET);
+            //        RestRequest request = new RestRequest(fullPath, method);
+            //        request.AddHeader("Content-Type", "application/json");
+            //        request.AddHeader("x-auth-key", _publicKey);
+            //        request.AddHeader("x-auth-timestamp", timestamp.ToString());
+            //        request.AddHeader("x-auth-signature", signature);
+
+            //        // если передаётся тело запроса
+            //        if (body != null /*&& method != Method.GET*/)
+            //        {
+            //            //string jsonBody = JsonConvert.SerializeObject(body);
+            //            request.AddParameter("application/json", body, ParameterType.RequestBody);
+            //        }
+            //        IRestResponse response = client.Execute(request);
+
+            //        return response;
+
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        SendLogMessage(ex.Message, LogMessageType.Error);
+            //        return null;
+            //    }
+            //}
+
+            static string GenerateSignature(string message, string secret)
         {
 
             byte[] keyBytes = Encoding.UTF8.GetBytes(secret);
