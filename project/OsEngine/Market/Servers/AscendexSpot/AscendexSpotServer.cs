@@ -22,6 +22,11 @@ using ErrorEventArgs = OsEngine.Entity.WebSocketOsEngine.ErrorEventArgs;
 using Side = OsEngine.Entity.Side;
 using System.Globalization;
 using OsEngine.Market.Servers.Transaq.TransaqEntity;
+using WebSocketSharp;
+using WebSocketState = OsEngine.Entity.WebSocketOsEngine.WebSocketState;
+using WebSocket = OsEngine.Entity.WebSocketOsEngine.WebSocket;
+using CloseEventArgs = OsEngine.Entity.WebSocketOsEngine.CloseEventArgs;
+using MessageEventArgs = OsEngine.Entity.WebSocketOsEngine.MessageEventArgs;
 
 
 
@@ -1930,7 +1935,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     Order updateOrder = new Order();
 
                     updateOrder.SecurityNameCode = json.data.s;
+                    updateOrder.SecurityClassCode= json.data.s;
                     updateOrder.NumberMarket = json.data.orderId;
+                    updateOrder.NumberUser = GetNumberUserByOrderId(json.data.orderId) ?? -1; 
                     updateOrder.State = GetOrderState(json.data.st);
                     updateOrder.Side = (json.data.sd.ToLower() == "buy") ? Side.Buy : Side.Sell;
                     updateOrder.TypeOrder = (json.data.ot.ToLower() == "limit") ? OrderPriceType.Limit : OrderPriceType.Market;
@@ -1941,6 +1948,20 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     updateOrder.PortfolioNumber = "AscendexSpotPortfolio";
 
+                    if ((json.data.st) == "Done" || (json.data.st) == "Filled")
+                    {
+                        
+                        updateOrder.TimeDone = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
+                    }
+
+                    else if ((json.data.st) =="Canceled")
+                    {
+                        updateOrder.State=GetOrderState(json.data.st);
+                        updateOrder.TimeCancel = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
+                    }
+
+                    RemoveCompletedOrder(updateOrder.NumberMarket, (updateOrder.State).ToString());
+
                     MyOrderEvent?.Invoke(updateOrder);
                 }
             }
@@ -1950,14 +1971,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-
         private void UpdatePortfolio(WebSocketMessage<AscendexSpotPortfolio> json)
         {
             try
             {
-                // AscendexSpotPortfolio json = JsonConvert.DeserializeObject<AscendexSpotPortfolio>(message);
-
-
                 if (json == null)
                 {
                     return;
@@ -2002,6 +2019,73 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
         #endregion
+      //  Dictionary<NumberUser, OrderId>
+        Dictionary<int,string> userToOrderMap = new Dictionary<int, string>();
+        Dictionary<string, int> orderToUserMap =new Dictionary<string, int>();
+        //public void RemoveAllCompletedOrders(List<AscendexSpotOrderInfo> orders)
+        //{
+        //    for (int i = 0; i < orders.Count; i++)
+        //    {
+        //        RemoveCompletedOrder(orders[i].orderId, orders[i].status);
+        //    }
+        //}
+
+
+
+        public string GetOrderIdByNumberUser(int numberUser)
+        {
+            if (userToOrderMap.TryGetValue(numberUser, out string orderId))
+            {
+                return orderId;
+            }
+
+            return null;
+        }
+
+        public int? GetNumberUserByOrderId(string orderId)
+        {
+            if (orderToUserMap.TryGetValue(orderId, out int numberUser))
+            {
+                return numberUser;
+            }
+
+            return null; // Если не найден
+        }
+
+
+        // Удалить связь, если ордер завершён
+        public void RemoveCompletedOrder(string orderId, string status)
+        {
+            if (IsOrderFinal(status) && orderToUserMap.TryGetValue(orderId, out int numberUser))
+            {
+                // Удаляем ордер из обоих словарей
+                orderToUserMap.Remove(orderId);
+                userToOrderMap.Remove(numberUser);
+
+                // Логируем удаление
+                SendLogMessage($"[OrderLinkManager] Удалён завершённый ордер: OrderId={orderId}, Status={status}", LogMessageType.Error);
+            }
+        }
+
+        // Массовое удаление завершённых ордеров
+        public void RemoveAllCompletedOrders(List<AscendexSpotOrderInfo> orders)
+        {
+            for (int i = 0; i < orders.Count; i++)
+            {
+                RemoveCompletedOrder(orders[i].orderId, orders[i].status);
+            }
+        }
+
+        /// Возвращает true, если ордер завершён (неактивен)
+        public bool IsOrderFinal(string status)
+        {
+            return status == "Canceled" ||
+                   status == "Filled" ||
+                   status == "Rejected" ||
+                   status == "Expired" ||
+                   status == "Failed";
+        }
+
 
         #region  11 Trade
         public void SendOrder(Order order)
@@ -2049,8 +2133,23 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 else if (response != null && response.code == "0" && response.data != null)
                 {
                     SendLogMessage($" Order send: status {response.data.status} OrderId :{response.data.info.orderId}", LogMessageType.Error);
+
                     order.NumberMarket = response.data.info.orderId;
+
+
+                    if (!userToOrderMap.ContainsKey(order.NumberUser))
+                    {
+                        userToOrderMap.Add(order.NumberUser, order.NumberMarket);
+                    }
+
+                    if (!orderToUserMap.ContainsKey(order.NumberMarket))
+                    {
+                        orderToUserMap.Add(order.NumberMarket, order.NumberUser);
+                    }
+
+
                     order.State = GetOrderState(response.data.status);
+
                     MyOrderEvent?.Invoke(order);
                 }
                 else
@@ -2089,7 +2188,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     if (cancelResult != null && cancelResult.code == "0")
                     {
-                        SendLogMessage($"All active orders cancelled: {cancelResult.data.orderId} ,  Status: {cancelResult.data.status}", LogMessageType.Error);
+                        SendLogMessage($"All active orders cancelled: {cancelResult.data.orderId}", LogMessageType.Error);
                         GetPortfolios();
                     }
                     else
@@ -2214,7 +2313,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
         public void GetAllActivOrders()
-        {
+        {//data\":[]
             List<Order> orders = new List<Order>();
 
             string accountGroup = GetAccountGroup();
@@ -2234,6 +2333,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (result != null && result.code == "0")
                 {
+                    if (result.data.Count == 0)
+                    {
+                     // SendLogMessage($"No active orders", LogMessageType.Error);
+                      return;
+                    }
+
                     for (int i = 0; i < result.data.Count; i++)
                     {
                         AscendexSpotOrderInfo order = result.data[i];
@@ -2253,15 +2358,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         activeOrder.PortfolioNumber = "AscendexSpotPortfolio";
 
                         orders.Add(activeOrder);
-
-                        SendLogMessage($"OrderId: {order.orderId}, Symbol: {order.symbol}, Side: {order.side}, Qty: {order.orderQty}, Price: { order.price}", LogMessageType.Error);
+                        
                     }
-
-                    SendLogMessage($"Order Status: {result.code} | Статус: {response}", LogMessageType.Error);
-                   
                 }
                 else
                 {
+
                     SendLogMessage($" GetOrderStatus Error: code={result?.code}, {response.ErrorMessage}", LogMessageType.Error);
                 }
             }
@@ -2307,11 +2409,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     Console.WriteLine($"Order Status: {statusResult.data.orderId} | Статус: {statusResult.data.status}");
                     MyOrderEvent?.Invoke(order);
 
-                    //if (order.State == OrderStateType.Done
-                    //|| order.State == OrderStateType.Partial)
-                    //{
-                    //    CreateMyTrade(order.SecurityNameCode, order.NumberUser);
-                    //}
+                    if (order.State == OrderStateType.Done
+                    || order.State == OrderStateType.Partial)
+                    {
+                        CreateMyTrade(order.SecurityNameCode, order.NumberUser);
+                    }
 
                 }
                 else
@@ -2327,85 +2429,85 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         }
         private RateGate _rateGateOrder = new RateGate(90, TimeSpan.FromMinutes(1));
-        //private void CreateMyTrade(string nameSec, int numberUser)
-        //{
-        //    _rateGateOrder.WaitToProceed();
+        private void CreateMyTrade(string nameSec, int numberUser)
+        {
+            _rateGateOrder.WaitToProceed();
 
-        //    try
-        //    {
-              ////  string _apiPath = $"v2/auth/r/trades/{nameSec}/hist";
+            try
+            {
+                //  string _apiPath = $"v2/auth/r/trades/{nameSec}/hist";
 
-              //  IRestResponse response = CreatePrivateQuery(_apiPath, Method.POST, null);
+                IRestResponse response = CreatePrivateQuery(_apiPath, Method.POST, null);
 
-              //  if (response.StatusCode == HttpStatusCode.OK)
-              //  {
-              //      List<List<string>> data = JsonConvert.DeserializeObject<List<List<string>>>(response.Content);
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    List<List<string>> data = JsonConvert.DeserializeObject<List<List<string>>>(response.Content);
 
-              //      if (data != null && data.Count > 0)
-              //      {
-              //          for (int i = 0; i < data.Count; i++)
-              //          {
-              //              List<string> tradeData = data[i];
+                    if (data != null && data.Count > 0)
+                    {
+                        for (int i = 0; i < data.Count; i++)
+                        {
+                            List<string> tradeData = data[i];
 
-              //              if (tradeData == null)
-              //              {
-              //                  return;
-              //              }
+                            if (tradeData == null)
+                            {
+                                return;
+                            }
 
-              //              int userNumber = 0;
+                            int userNumber = 0;
 
-        //                    try
-        //                    {
-        //                        userNumber = Convert.ToInt32(tradeData[11]);
-        //                    }
-        //                    catch
-        //                    {
-        //                        // ignore
-        //                    }
+                            try
+                            {
+                                userNumber = Convert.ToInt32(tradeData[11]);
+                            }
+                            catch
+                            {
+                                // ignore
+                            }
 
-        //                    if (numberUser == userNumber)
-        //                    {
-        //                        MyTrade myTrade = new MyTrade();
+                            if (numberUser == userNumber)
+                            {
+                                MyTrade myTrade = new MyTrade();
 
-        //                        myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(tradeData[2]));
-        //                        myTrade.SecurityNameCode = Convert.ToString(tradeData[1]);
-        //                        myTrade.NumberOrderParent = (tradeData[3]).ToString();
-        //                        myTrade.Price = (tradeData[7]).ToString().ToDecimal();
-        //                        myTrade.NumberTrade = (tradeData[0]).ToString();
-        //                        decimal volume = (tradeData[4]).ToString().ToDecimal();
-        //                        myTrade.Side = volume > 0 ? Side.Buy : Side.Sell;
+                                myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(tradeData[2]));
+                                myTrade.SecurityNameCode = Convert.ToString(tradeData[1]);
+                                myTrade.NumberOrderParent = (tradeData[3]).ToString();
+                                myTrade.Price = (tradeData[7]).ToString().ToDecimal();
+                                myTrade.NumberTrade = (tradeData[0]).ToString();
+                                decimal volume = (tradeData[4]).ToString().ToDecimal();
+                                myTrade.Side = volume > 0 ? Side.Buy : Side.Sell;
 
-        //                        if (volume < 0)
-        //                        {
-        //                            volume = Math.Abs(volume);
-        //                        }
+                                if (volume < 0)
+                                {
+                                    volume = Math.Abs(volume);
+                                }
 
-        //                        string commissionSecName = tradeData[10].ToString();
+                                string commissionSecName = tradeData[10].ToString();
 
-        //                        if (myTrade.SecurityNameCode.StartsWith("t" + commissionSecName))
-        //                        {
-        //                            myTrade.Volume = volume + tradeData[9].ToString().ToDecimal();
-        //                        }
-        //                        else
-        //                        {
-        //                            myTrade.Volume = volume;
-        //                        }
+                                if (myTrade.SecurityNameCode.StartsWith("t" + commissionSecName))
+                                {
+                                    myTrade.Volume = volume + tradeData[9].ToString().ToDecimal();
+                                }
+                                else
+                                {
+                                    myTrade.Volume = volume;
+                                }
 
-        //                        MyTradeEvent?.Invoke(myTrade);
-        //                    }
-        //                }
-        //            }
-        //        }
-        //        else
-        //        {
-        //            SendLogMessage($"CreateMyTrade>. Http State Code: {response.StatusCode}, Content: {response.Content}", LogMessageType.Error);
-        //        }
-        //    }
-        //    catch (Exception exception)
-        //    {
-        //        SendLogMessage(exception.ToString(), LogMessageType.Error);
-        //    }
-        //}
+                                MyTradeEvent?.Invoke(myTrade);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    SendLogMessage($"CreateMyTrade>. Http State Code: {response.StatusCode}, Content: {response.Content}", LogMessageType.Error);
+                }
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
 
         private OrderStateType GetOrderState(string orderStateResponse)
         {
@@ -2413,14 +2515,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 return OrderStateType.Active;
             }
-            else if (orderStateResponse.StartsWith("Done"))
+            else if (orderStateResponse.StartsWith("Done") || orderStateResponse.StartsWith("Filled"))
             {
                 return OrderStateType.Done;
             }
-            else if (orderStateResponse.StartsWith("Filled"))
-            {
-                return OrderStateType.Done;
-            }
+            
             else if (orderStateResponse.StartsWith("PartiallyFilled"))
             {
                 return OrderStateType.Partial;

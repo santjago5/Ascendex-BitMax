@@ -56,5 +56,6 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
             public string ab { get; set; }   //available balance "600"
         }
 
+
   }
 
