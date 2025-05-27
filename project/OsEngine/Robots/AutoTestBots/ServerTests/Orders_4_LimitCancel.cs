@@ -27,7 +27,7 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
                 return;
             }
 
-            if(CountOrders < 20)
+            if(CountOrders <20)
             {
                 this.SetNewError("Error 1. Iteration Count < 20.");
                 TestEnded();
