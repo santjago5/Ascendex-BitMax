@@ -19,7 +19,7 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
     {
         public string ac { get; set; }               // Тип аккаунта / Account type
         public string accountId { get; set; }        // Идентификатор аккаунта / Account ID
-        public string action { get; set; }           // Действие (например, place-order) / Action (e.g. place-order)
+        public string action { get; set; }           // Действие (например, place-order) / Action (e.g. place-order)/(cancel-order)/(cancel-all)
         public AscendexSpotOrderInfo info { get; set; }     // Подробная информация о заказе / Detailed order info
         public string status { get; set; }           // Статус запроса (например, ACCEPT) / Request status (e.g. ACCEPT)
     }

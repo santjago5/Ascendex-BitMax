@@ -21,12 +21,15 @@ using OsEngine.Entity.WebSocketOsEngine;
 using ErrorEventArgs = OsEngine.Entity.WebSocketOsEngine.ErrorEventArgs;
 using Side = OsEngine.Entity.Side;
 using System.Globalization;
-using OsEngine.Market.Servers.Transaq.TransaqEntity;
-using WebSocketSharp;
 using WebSocketState = OsEngine.Entity.WebSocketOsEngine.WebSocketState;
 using WebSocket = OsEngine.Entity.WebSocketOsEngine.WebSocket;
 using CloseEventArgs = OsEngine.Entity.WebSocketOsEngine.CloseEventArgs;
 using MessageEventArgs = OsEngine.Entity.WebSocketOsEngine.MessageEventArgs;
+using Com.Lmax.Api.Internal;
+using WebSocketSharp;
+using Com.Lmax.Api.Order;
+using OsEngine.Market.Servers.GateIo.GateIoFutures.Entities;
+
 
 
 
@@ -853,10 +856,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 string payload = timestamp + "+stream";
                 string signature = CreateSignatureBase64(_secretKey, payload);
+                string idGuid = Guid.NewGuid().ToString();
 
                 var auth = new
                 {
                     op = "auth",
+                    id = "auth-req" + idGuid,
                     t = timestamp,
                     key = _publicKey,
                     sig = signature
@@ -864,6 +869,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string authJson = JsonConvert.SerializeObject(auth);
                 _webSocketPrivate.Send(authJson);
+
+                SendLogMessage("Auth sent: " + authJson, LogMessageType.Trade);///&&&&&&&&&&&&&
             }
             catch (Exception exception)
             {
@@ -1071,7 +1078,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 else if (e.Data.Contains("\"m\":\"ping\"")) //(e.IsText && e.Data.Contains("ping"))
                 {
-                    _webSocketPrivate.Send("pong");
+
+                    _webSocketPrivate.Send("{\"op\":\"pong\"}");
 
                     //    return;
 
@@ -1315,10 +1323,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (webSocketPublic != null)
                 {
-
+                    webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
                     webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{security.Name}\"}}");
                     webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
-                    webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
 
                 }
                 if (_webSocketPrivate != null)
@@ -1566,6 +1573,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     else if (message.Contains("\"m\":\"order\""))
                     {
                         var orderMessage = JsonConvert.DeserializeObject<WebSocketMessage<AscendexSpotOrderData>>(message);
+
                         //   if (cancel - all);
                         UpdateOrder(orderMessage);
 
@@ -1887,34 +1895,64 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-        private void UpdateMyTrade(string message)
+
+
+        private void UpdateMyTrade(string json)
         {
             try
             {
-                //WebSocketMessage<AscendexSpotMyTradeData> tradeMessage = JsonConvert.DeserializeObject<WebSocketMessage<AscendexSpotMyTradeData>>(message);
+                AscendexSpotQueryOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotQueryOrderResponse>(json);
 
-                AscendexSpotMyTradeData json = JsonConvert.DeserializeObject<AscendexSpotMyTradeData>(message);
-
-                if (json == null)
+                if (response == null || response.code != "0" || response.data == null /*|| response.data.Count == 0*/)
                 {
-                    SendLogMessage("UpdateMyTrade> Received empty json", LogMessageType.Error);
+                    SendLogMessage("UpdateMyTrade> Received empty or invalid json", LogMessageType.Error);
                     return;
                 }
 
+
+                //// Обрабатываем все сделки в цикле
+                //for (int i = 0; i < response.data.Count; i++)
+                //{
+                //    AscendexSpotQueryOrderMessage item = response.data[i];
+
                 MyTrade myTrade = new MyTrade();
 
-                myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.t));
-                myTrade.SecurityNameCode = json.s; ;
-                myTrade.Price = json.p.ToString().ToDecimal();
-                myTrade.NumberTrade = json.orderId;
-                myTrade.Volume = json.q.ToString().ToDecimal();
-                myTrade.Side = (json.side.ToLower() == "buy") ? Side.Buy : Side.Sell;
+
+                myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(response.data.lastExecTime));
+
+                myTrade.SecurityNameCode = response.data.symbol;
+
+                myTrade.Price = response.data.price.ToDecimal();
+
+                myTrade.NumberTrade = response.data.seqNum;
+
+                myTrade.NumberOrderParent = response.data.orderId;
+
+                myTrade.Volume = response.data.orderQty.ToDecimal();
+
+                myTrade.Side = (response.data.side == "Buy") ? Side.Buy : Side.Sell;
+
+                //myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(item.lastExecTime));
+
+                //myTrade.SecurityNameCode = item.symbol;
+
+                //myTrade.Price = item.price.ToDecimal();
+
+                //myTrade.NumberTrade = item.seqNum;
+
+                //myTrade.NumberOrderParent = item.orderId;
+
+                //myTrade.Volume = item.orderQty.ToDecimal();
+
+                //myTrade.Side = (item.side == "Buy") ? Side.Buy : Side.Sell;
 
 
                 MyTradeEvent?.Invoke(myTrade);
 
                 SendLogMessage(myTrade.ToString(), LogMessageType.Trade);
+                //}
             }
+
             catch (Exception exception)
             {
                 SendLogMessage(exception.ToString(), LogMessageType.Error);
@@ -1938,6 +1976,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     //action": "cancel-Order",
                     //action": "cancel-All"
                     Order updateOrder = new Order();
+                  //  OrderStateType orderState = GetOrderState(json.data.st);
+
 
                     updateOrder.SecurityNameCode = json.data.s;
                     updateOrder.SecurityClassCode = json.data.s;
@@ -1953,21 +1993,25 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     updateOrder.PortfolioNumber = "AscendexSpotPortfolio";
 
-                    if ((json.data.st) == "Done" || (json.data.st) == "Filled")
-                    {
+                    MyOrderEvent?.Invoke(updateOrder);
 
-                        updateOrder.TimeDone = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
-                    }
+                    //if (orderState == OrderStateType.Done || orderState == OrderStateType.Partial)
+                    //{
+                    //    UpdateMyTrade(json);
 
-                    else if ((json.data.st) == "Canceled")
-                    {
-                        updateOrder.State = GetOrderState(json.data.st);
-                        updateOrder.TimeCancel = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
-                    }
+                    //    //updateOrder.State = GetOrderState(json.data.st);
+                    //    updateOrder.TimeDone = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
+                    //}
+
+                    //else if (orderState == OrderStateType.Cancel)
+                    //{
+                    //    updateOrder.State = GetOrderState(json.data.st);
+                    //    updateOrder.TimeCancel = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
+                    //}
 
                     //  RemoveCompletedOrder(updateOrder.NumberMarket, (updateOrder.State).ToString());
 
-                    MyOrderEvent?.Invoke(updateOrder);
+
                 }
             }
             catch (Exception exception)
@@ -2101,17 +2145,32 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 string accountGroup = GetAccountGroup();
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                string body;
 
-                string body = $"{{" +
-                              $"\"id\": \"{order.NumberUser.ToString()}\", " +
-                              $"\"time\": {time}, " +
-                              $"\"symbol\": \"{order.SecurityNameCode}\", " +
-                              $"\"orderPrice\": \"{order.Price.ToString(CultureInfo.InvariantCulture)}\", " +
-                              $"\"orderQty\": \"{order.Volume.ToString(CultureInfo.InvariantCulture)}\", " +
-                              $"\"orderType\": \"{order.TypeOrder.ToString()}\", " +
-                              $"\"side\": \"{order.Side.ToString()}\"" +
-                              $"}}";
+                if (order.TypeOrder == OrderPriceType.Limit)
+                {
+                    body = $"{{" +
+                                  $"\"id\": \"{order.NumberUser.ToString()}\", " +
+                                  $"\"time\": {time}, " +
+                                  $"\"symbol\": \"{order.SecurityNameCode}\", " +
+                                  $"\"orderPrice\": \"{order.Price.ToString(CultureInfo.InvariantCulture)}\", " +
+                                  $"\"orderQty\": \"{order.Volume.ToString(CultureInfo.InvariantCulture)}\", " +
+                                  $"\"orderType\": \"{order.TypeOrder.ToString()}\", " +
+                                  $"\"side\": \"{order.Side.ToString()}\"" +
+                                  $"}}";
+                }
+                else
+                {
+                    body = $"{{" +
+                                  $"\"id\": \"{order.NumberUser.ToString()}\", " +
+                                  $"\"time\": {time}, " +
+                                  $"\"symbol\": \"{order.SecurityNameCode}\", " +
+                                  $"\"orderQty\": \"{order.Volume.ToString(CultureInfo.InvariantCulture)}\", " +
+                                  $"\"orderType\": \"{order.TypeOrder.ToString()}\", " +
+                                  $"\"side\": \"{order.Side.ToString()}\"" +
+                                  $"}}";
 
+                }
 
                 string fullPath = $"/{accountGroup}/api/pro/v1/cash/order";
 
@@ -2153,7 +2212,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         orderToUserMap.Add(order.NumberMarket, order.NumberUser);
                     }
 
-                    //GetOrderStatus(order);
                     order.State = GetOrderState(response.data.status);
 
                     MyOrderEvent?.Invoke(order);
@@ -2170,10 +2228,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage("Order send exception " + exception.ToString(), LogMessageType.Error);
             }
         }
+        private RateGate _rateGateCancelOrder = new RateGate(1, TimeSpan.FromMilliseconds(7000));
         public void CancelAllOrders()
         {//{\"code\":0,\"data\":{\"accountId\":\"cshANLX2if7MJZaPkp5EMWUZLYNwIhJv\",\"ac\":\"CASH\",\"action\":\"cancel-all\",\"status\":\"Ack\",\"info\":{\"symbol\":\"\",\"orderType\":\"\",\"timestamp\":1748178601786,\"id\":\"\",\"orderId\":\"\"}}}"
             try
             {
+                _rateGateCancelOrder.WaitToProceed();
+
                 string accountGroup = GetAccountGroup();
 
                 string accountCategory = "cash";
@@ -2217,6 +2278,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
+                _rateGateCancelOrder.WaitToProceed();
                 string accountGroup = GetAccountGroup();
 
                 string path = $"/{accountGroup}/api/pro/v1/cash/order";
@@ -2376,7 +2438,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 else
                 {
 
-                    SendLogMessage($" GetOrderStatus Error: code={result?.code}, {response.ErrorMessage}", LogMessageType.Error);
+                    SendLogMessage($" GetOrderStatus Error: code={result?.code}, {response.Content}", LogMessageType.Error);
                 }
             }
             else
@@ -2398,98 +2460,136 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         public void GetOrderStatus(Order order)
         {
-            string accountGroup = GetAccountGroup();
-            string accountCategory = "cash";
+            string accountGroup = GetAccountGroup(); // Получаем группу аккаунта
+            string accountCategory = "cash"; // Категория аккаунта
 
+            // Формируем путь запроса
             string path = $"/{accountGroup}/api/pro/v1/cash/order/status?orderId={order.NumberMarket}";
 
+            // Выполняем запрос через CreatePrivateQuery
+            IRestResponse request = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET);
 
-            IRestResponse response = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET/*, _myProxy*/);
-
-            if (response == null)
+            if (request == null)
             {
-                SendLogMessage($" {response.StatusCode}", LogMessageType.Error);
+                SendLogMessage("GetOrderStatus> Запрос вернул null", LogMessageType.Error);
                 return;
             }
 
-            if (response.StatusCode == HttpStatusCode.OK)
+            if (request.StatusCode == HttpStatusCode.OK)
             {
-                AscendexSpotCancelOrderResponse statusResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
+                // Десериализуем ответ
+                AscendexSpotQueryOrderResponse queryOrder = JsonConvert.DeserializeObject<AscendexSpotQueryOrderResponse>(request.Content);
+               
 
-                if (statusResult != null && statusResult.code == "0")
+                if (queryOrder != null && queryOrder.code != "0")
                 {
-                    Console.WriteLine($"Order Status: {statusResult.data.orderId} | Статус: {statusResult.data.status}");
-                    MyOrderEvent?.Invoke(order);
-
-                    if (order.State == OrderStateType.Done
-                    || order.State == OrderStateType.Partial)
-                    {
-                        CreateMyTrade(order.SecurityNameCode, order.NumberUser);
-                    }
-
+                    SendLogMessage($"Error status order: {queryOrder.code}, message :{request.Content}", LogMessageType.Error);
+                    return;
                 }
+                    //if (response != null && response.code == "0" && response.data != null && response.data.Count > 0)
+                    //{
+                    //    for (int i = 0; i < response.data.Count; i++)
+                    //    {
+                    //        AscendexSpotQueryOrderMessage queryOrder = response.data[i];
+
+                    // Лог текущего ордера
+                SendLogMessage($"Order Status: {queryOrder.data.orderId} | Статус: {queryOrder.data.status}", LogMessageType.Error);
+
+                // Обновляем статус текущего локального ордера
+                order.State = GetOrderState(queryOrder.data.status);
+                MyOrderEvent?.Invoke(order);
+
+                // Если есть исполнение
+                if (order.State == OrderStateType.Done || order.State == OrderStateType.Partial)
+                {
+                    MyTrade myTrade = new MyTrade();
+
+                    myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(queryOrder.data.lastExecTime));
+                    myTrade.SecurityNameCode = queryOrder.data.symbol;
+                    myTrade.NumberOrderParent = queryOrder.data.orderId;
+                    myTrade.Price = queryOrder.data.price.ToDecimal();
+                    myTrade.NumberTrade = queryOrder.data.seqNum;
+                    myTrade.Volume = queryOrder.data.cumFilledQty.ToDecimal();
+                    myTrade.Side = (queryOrder.data.side == "Buy") ? Side.Buy : Side.Sell;
+
+                    // Отдельная переменная под комиссию, если нужно её учитывать отдельно
+                    string commissionSecName = queryOrder.data.cumFee;
+
+                    // Вызываем событие трейда
+                    MyTradeEvent?.Invoke(myTrade);
+
+                    // Лог трейда
+                    SendLogMessage(myTrade.ToString(), LogMessageType.Trade);
+                }
+                //  }
+                //}
                 else
                 {
-                    SendLogMessage($" GetOrderStatus Error: code={statusResult?.code}, {response.ErrorMessage}", LogMessageType.Error);
+                    // Лог ошибки, если структура ответа некорректна
+                    SendLogMessage($"GetOrderStatus Error: code={queryOrder.code}, raw={request.Content}", LogMessageType.Error);
                 }
             }
             else
             {
-                SendLogMessage($"HTTP Error:{response.StatusCode},{response.Content}", LogMessageType.Error);
-
-            }
-
-        }
-        private RateGate _rateGateOrder = new RateGate(90, TimeSpan.FromMinutes(1));
-        private void CreateMyTrade(string symbol, int numberUser)
-        {
-            _rateGateOrder.WaitToProceed();
-
-            try
-            {
-                string fullpath = $"/api/pro/v1/trades";
-
-                IRestResponse request = CreatePublicQuery(fullpath, Method.GET);
-
-                if (request.StatusCode == HttpStatusCode.OK)
-                {
-                    AscendexSpotOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(request.Content);
-
-                    if (response != null && response.code == "0" && response.data != null)
-                    {
-                        int numUser = GetNumberUserByOrderId(response.data.info.orderId);
-
-                        if (numberUser == numUser)
-                        {
-                            MyTrade myTrade = new MyTrade();
-
-                            myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(response.data.info.lastExecTime));
-                            myTrade.SecurityNameCode = response.data.info.symbol;
-                            myTrade.NumberOrderParent = response.data.info.orderId;
-                            myTrade.Price = (response.data.info.price).ToDecimal();
-                            myTrade.NumberTrade = response.data.info.seqNum;
-                            myTrade.Volume = (response.data.info.cumFilledQty).ToDecimal();
-                            myTrade.Side = (response.data.info.side) == "Buy" ? Side.Buy : Side.Sell;
-                            string commissionSecName = response.data.info.cumFee;
-                          
-                            myTrade.Volume = (myTrade.Volume + commissionSecName).ToDecimal();
-
-                            MyTradeEvent?.Invoke(myTrade);
-                        }
-
-                    }
-                    else
-                    {
-                        SendLogMessage($"CreateMyTrade>. Http State Code: {response.data.info.errorCode}", LogMessageType.Error);
-                    }
-                }
-
-            }
-            catch (Exception exception)
-            {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                // Лог ошибки HTTP
+                SendLogMessage($"HTTP Error: {request.StatusCode}, content={request.Content}", LogMessageType.Error);
             }
         }
+
+
+
+
+        private RateGate _rateGateOrder = new RateGate(1, TimeSpan.FromMilliseconds(7000));
+        //private void CreateMyTrade(string symbol, int numberUser)
+        //{
+        //    _rateGateOrder.WaitToProceed();
+
+        //    try
+        //    {
+        //        //string fullpath = $"/api/pro/v1/trades";
+
+
+        //        IRestResponse request = CreatePublicQuery(fullpath, Method.GET);
+
+        //        if (request.StatusCode == HttpStatusCode.OK)
+        //        {
+        //            AscendexSpotOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(request.Content);
+
+        //            if (response != null && response.code == "0" && response.data != null)
+        //            {
+        //                int numUser = GetNumberUserByOrderId(response.data.info.orderId);
+
+        //                if (numberUser == numUser)
+        //                {
+        //                    MyTrade myTrade = new MyTrade();
+
+        //                    myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(response.data.info.lastExecTime));
+        //                    myTrade.SecurityNameCode = response.data.info.symbol;
+        //                    myTrade.NumberOrderParent = response.data.info.orderId;
+        //                    myTrade.Price = (response.data.info.price).ToDecimal();
+        //                    myTrade.NumberTrade = response.data.info.seqNum;
+        //                    myTrade.Volume = (response.data.info.cumFilledQty).ToDecimal();
+        //                    myTrade.Side = (response.data.info.side) == "Buy" ? Side.Buy : Side.Sell;
+        //                    string commissionSecName = response.data.info.cumFee;
+
+        //                    myTrade.Volume = (myTrade.Volume + commissionSecName).ToDecimal();
+
+        //                    MyTradeEvent?.Invoke(myTrade);
+        //                }
+
+        //            }
+        //            else
+        //            {
+        //                SendLogMessage($"CreateMyTrade>. Http State Code: {response.data.info.errorCode}", LogMessageType.Error);
+        //            }
+        //        }
+
+        //    }
+        //    catch (Exception exception)
+        //    {
+        //        SendLogMessage(exception.ToString(), LogMessageType.Error);
+        //    }
+        //}
 
         private OrderStateType GetOrderState(string orderStateResponse)
         {
