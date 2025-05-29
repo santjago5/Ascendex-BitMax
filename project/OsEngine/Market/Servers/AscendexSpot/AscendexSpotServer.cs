@@ -25,12 +25,6 @@ using WebSocketState = OsEngine.Entity.WebSocketOsEngine.WebSocketState;
 using WebSocket = OsEngine.Entity.WebSocketOsEngine.WebSocket;
 using CloseEventArgs = OsEngine.Entity.WebSocketOsEngine.CloseEventArgs;
 using MessageEventArgs = OsEngine.Entity.WebSocketOsEngine.MessageEventArgs;
-using Com.Lmax.Api.Internal;
-using WebSocketSharp;
-using Com.Lmax.Api.Order;
-using OsEngine.Market.Servers.GateIo.GateIoFutures.Entities;
-
-
 
 
 
@@ -1563,7 +1557,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     //{"m":"error","code":150001,"reason":"INVALID_JSON_FORMAT","info":"Unable to parse json: pong"}
                     else if (message.Contains("\"m\":\"error\""))
                     {
-                        continue;
+                        //continue;
+                        return;
                     }
                     //else if (message.Contains("\"m\":\"trade\""))
                     //{
@@ -1981,9 +1976,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     updateOrder.SecurityNameCode = json.data.s;
                     updateOrder.SecurityClassCode = json.data.s;
+                    updateOrder.State = GetOrderState(json.data.st);
                     updateOrder.NumberMarket = json.data.orderId;
                     updateOrder.NumberUser = GetNumberUserByOrderId(updateOrder.NumberMarket);
-                    updateOrder.State = GetOrderState(json.data.st);
+                    
                     updateOrder.Side = (json.data.sd == "Buy") ? Side.Buy : Side.Sell;
                     updateOrder.TypeOrder = (json.data.ot == "Limit") ? OrderPriceType.Limit : OrderPriceType.Market;
                     updateOrder.Price = (json.data.p).ToDecimal();
@@ -2141,7 +2137,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         {
             _rateGateOrder.WaitToProceed();
-            try//"orderId\":\"a1970c66215dU3283712985sdQpmNBq5
+            try
             {
                 string accountGroup = GetAccountGroup();
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -2202,6 +2198,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     order.NumberMarket = response.data.info.orderId;
 
+                    order.State = GetOrderState(response.data.info.status);
+
                     if (!userToOrderMap.ContainsKey(order.NumberUser))
                     {
                         userToOrderMap.Add(order.NumberUser, order.NumberMarket);
@@ -2212,7 +2210,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         orderToUserMap.Add(order.NumberMarket, order.NumberUser);
                     }
 
-                    order.State = GetOrderState(response.data.status);
 
                     MyOrderEvent?.Invoke(order);
                 }
@@ -2274,7 +2271,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-        public void CancelOrder(Order order)//////////////////
+        public void CancelOrder(Order order)
         {
             try
             {
@@ -2387,7 +2384,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
         public void GetAllActivOrders()
-        {//data\":[]
+        {
             List<Order> orders = new List<Order>();
 
             string accountGroup = GetAccountGroup();
@@ -2421,7 +2418,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                         activeOrder.ServerType = ServerType.AscendexSpot;
                         activeOrder.SecurityNameCode = order.symbol;
-
 
                         activeOrder.NumberMarket = order.orderId;
                         activeOrder.Side = order.side == "Buy" ? Side.Buy : Side.Sell;
@@ -2593,7 +2589,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private OrderStateType GetOrderState(string orderStateResponse)
         {
-            if (orderStateResponse.StartsWith("New") || (orderStateResponse.StartsWith("Ack")))
+            if (string.IsNullOrEmpty(orderStateResponse))
+            { 
+                return OrderStateType.None; 
+            }
+
+            if (orderStateResponse.StartsWith("New") /*|| (orderStateResponse.StartsWith("Ack"))*/)
             {
                 return OrderStateType.Active;
             }
@@ -2615,7 +2616,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 return OrderStateType.Cancel;
             }
-
 
             return OrderStateType.None;
         }
