@@ -106,6 +106,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         FIFOListWebSocketPublicMessage = new ConcurrentQueue<string>();
                         FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
+                        CreatePublicWebSocketConnect();
                         CreatePrivateWebSocketConnect();
                         CheckSocketsActivate();
 
@@ -149,7 +150,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
 
                 DeleteWebSocketConnection();
-
             }
             catch (Exception exception)
             {
@@ -176,6 +176,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
         public event Action ConnectEvent;
+
         public event Action DisconnectEvent;
 
         #endregion
@@ -226,50 +227,53 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         SecurityEvent?.Invoke(_securities);
                     }
 
-                    List<Security> securities = new List<Security>();
-
-                    for (int i = 0; i < securityList.data.Count; i++)
+                    if (securityList != null && securityList.code == "0")
                     {
-                        string symbol = securityList.data[i].symbol;
-                        string price = securityList.data[i].tickSize;
-                        string domain = securityList.data[i].domain;
+                        List<Security> securities = new List<Security>();
 
-                        if (symbol.Contains("$") || domain.Contains("LeveragedETF"))
+                        for (int i = 0; i < securityList.data.Count; i++)
                         {
-                            continue;
+                            string symbol = securityList.data[i].symbol;
+                            string price = securityList.data[i].tickSize;
+                            string domain = securityList.data[i].domain;
+
+                            if (symbol.Contains("$") || domain.Contains("LeveragedETF"))
+                            {
+                                continue;
+                            }
+
+                            Security newSecurity = new Security();
+
+                            newSecurity.Exchange = ServerType.AscendexSpot.ToString();
+                            newSecurity.Name = symbol;
+                            newSecurity.NameFull = symbol;
+                            newSecurity.NameClass = GetNameClass(symbol);
+                            newSecurity.NameId = symbol;
+                            newSecurity.SecurityType = SecurityType.CurrencyPair;
+                            newSecurity.Lot = 1;
+                            newSecurity.State = SecurityStateType.Activ;
+                            newSecurity.PriceStep = securityList.data[i].tickSize.ToString().ToDecimal();
+                            newSecurity.Decimals = price.DecimalsCount() == 0 ? 1 : price.DecimalsCount();
+
+
+                            if (newSecurity.PriceStep == 0)
+                            {
+                                newSecurity.PriceStep = 1;
+                            }
+
+                            newSecurity.PriceStepCost = newSecurity.PriceStep;
+                            newSecurity.DecimalsVolume = Convert.ToInt32(securityList.data[i].priceScale);
+                            newSecurity.MinTradeAmount = securityList.data[i].minQty.ToString().ToDecimal();
+                            newSecurity.MinTradeAmountType = MinTradeAmountType.Contract;
+                            newSecurity.VolumeStep = newSecurity.DecimalsVolume.GetValueByDecimals();
+                            securities.Add(newSecurity);
+
                         }
 
-                        Security newSecurity = new Security();
-
-                        newSecurity.Exchange = ServerType.AscendexSpot.ToString();
-                        newSecurity.Name = symbol;
-                        newSecurity.NameFull = symbol;
-                        newSecurity.NameClass = GetNameClass(symbol);
-                        newSecurity.NameId = symbol;
-                        newSecurity.SecurityType = SecurityType.CurrencyPair;
-                        newSecurity.Lot = 1;
-                        newSecurity.State = SecurityStateType.Activ;
-                        newSecurity.PriceStep = securityList.data[i].tickSize.ToString().ToDecimal();
-                        newSecurity.Decimals = price.DecimalsCount() == 0 ? 1 : price.DecimalsCount();
-
-
-                        if (newSecurity.PriceStep == 0)
+                        if (SecurityEvent != null)
                         {
-                            newSecurity.PriceStep = 1;
+                            SecurityEvent(securities);
                         }
-
-                        newSecurity.PriceStepCost = newSecurity.PriceStep;
-                        newSecurity.DecimalsVolume = Convert.ToInt32(securityList.data[i].priceScale);
-                        newSecurity.MinTradeAmount = securityList.data[i].minQty.ToString().ToDecimal();
-                        newSecurity.MinTradeAmountType = MinTradeAmountType.Contract;
-                        newSecurity.VolumeStep = newSecurity.DecimalsVolume.GetValueByDecimals();
-                        securities.Add(newSecurity);
-
-                    }
-
-                    if (SecurityEvent != null)
-                    {
-                        SecurityEvent(securities);
                     }
                 }
                 else
@@ -718,7 +722,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     if (ServerStatus == ServerConnectStatus.Disconnect)
                     {
-                        Thread.Sleep(1000);
+                        Thread.Sleep(2000);
                         continue;
                     }
 
@@ -729,55 +733,61 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     }
                     //{"m":"connected","type":"unauth"}
                     //{"m":"sub","ch":"depth:1INCH/USDT","code":0}
-                    if (FIFOListWebSocketPublicMessage.TryDequeue(out string message))
+
+                    FIFOListWebSocketPublicMessage.TryDequeue(out string message);
+                    // if(){
+                    if (message == null)
                     {
-                        if (message.Contains("\"m\":\"depth-snapshot\""))
-                        {
-                            SnapshotDepth(message);
-                            continue;
-                        }
-
-                        else if (message.Contains("\"m\":\"depth\""))
-
-                        {
-                            UpdateDepth(message);
-                            continue;
-                        }
-                        else if (message.Contains("\"m\":\"trades\""))
-                        {
-                            UpdateTrade(message);
-                            continue;
-                        }
-                        else if (message.Contains("\"m\":\"ping\""))
-                        {
-                            for (int i = 0; i < _webSocketPublic.Count; i++)
-                            {
-                                WebSocket socket = _webSocketPublic[i];
-
-                                if (socket.ReadyState == WebSocketState.Open)
-                                {
-                                    //  socket.Send("pong");
-                                    SendPong(socket);
-                                    SendLogMessage("📡 Отправлен pong на ping", LogMessageType.System);
-                                }
-                            }
-
-                            //return;
-                            //continue;
-                        }
-                        //if (e.Data.Contains("\"m\":\"ping\""))
-                        //{
-                        //    WebSocket socket = sender as WebSocket;
-
-                        //    if (socket != null && socket.ReadyState == WebSocketState.Open)
-                        //    {
-                        //        socket.Send("pong");
-                        //        SendLogMessage("📡 Pong отправлен (по sender)", LogMessageType.System);
-                        //    }
-
-                        //    return;
-                        //}
+                        continue;
                     }
+
+                    if (message.Contains("\"m\":\"depth-snapshot\""))
+                    {
+                        SnapshotDepth(message);
+                        continue;
+                    }
+
+                    else if (message.Contains("\"m\":\"depth\""))
+
+                    {
+                        UpdateDepth(message);
+                        continue;
+                    }
+                    else if (message.Contains("\"m\":\"trades\""))
+                    {
+                        UpdateTrade(message);
+                        continue;
+                    }
+                    else if (message.Contains("\"m\":\"ping\""))
+                    {
+                        for (int i = 0; i < _webSocketPublic.Count; i++)
+                        {
+                            WebSocket socket = _webSocketPublic[i];
+
+                            if (socket.ReadyState == WebSocketState.Open)
+                            {
+                                //  socket.Send("pong");
+                                SendPong(socket);
+                                SendLogMessage(" Отправлен pong на ping", LogMessageType.System);
+                            }
+                        }
+
+                        //return;
+                        //continue;
+                    }
+                    //if (e.Data.Contains("\"m\":\"ping\""))
+                    //{
+                    //    WebSocket socket = sender as WebSocket;
+
+                    //    if (socket != null && socket.ReadyState == WebSocketState.Open)
+                    //    {
+                    //        socket.Send("pong");
+                    //        SendLogMessage("📡 Pong отправлен (по sender)", LogMessageType.System);
+                    //    }
+
+                    //    return;
+                    //}
+                    //}
                 }
                 catch (Exception exception)
                 {
@@ -786,718 +796,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
             }
         }
-
-
-        private ConcurrentQueue<string> FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
-        private ConcurrentQueue<string> FIFOListWebSocketPublicMessage = new ConcurrentQueue<string>();
-
-        private List<WebSocket> _webSocketPublic = new List<WebSocket>();
-
-        private WebSocket _webSocketPrivate;
-        private const string _webSocketUrl = "wss://ascendex.com/1/api/pro/v1/stream";
-
-        private WebSocket CreateNewPublicSocket()
-        {
-            try
-            {
-                WebSocket webSocketPublicNew = new WebSocket(_webSocketUrl);
-
-                //if (_myProxy != null)
-                //{
-                //    webSocketPublicNew.SetProxy(_myProxy);
-                //}
-
-                webSocketPublicNew.EmitOnPing = true;
-                webSocketPublicNew.OnOpen += WebSocketPublicNew_OnOpen;
-                webSocketPublicNew.OnClose += WebSocketPublicNew_OnClose;
-                webSocketPublicNew.OnMessage += WebSocketPublicNew_OnMessage;
-                webSocketPublicNew.OnError += WebSocketPublicNew_OnError;
-                webSocketPublicNew.Connect();
-
-                return webSocketPublicNew;
-            }
-            catch (Exception exception)
-            {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
-                return null;
-            }
-        }
-
-        private void CreatePrivateWebSocketConnect()
-        {
-            if (_webSocketPrivate != null)
-                return;
-
-            _webSocketPrivate = new WebSocket(_webSocketUrl);
-
-            //if (_myProxy != null)
-            //{
-            //    _webSocketPrivate.SetProxy(_myProxy);
-            //}
-
-            _webSocketPrivate.EmitOnPing = true;
-            _webSocketPrivate.OnOpen += _webSocketPrivate_OnOpen;
-            _webSocketPrivate.OnClose += _webSocketPrivate_OnClose;
-            _webSocketPrivate.OnMessage += _webSocketPrivate_OnMessage;
-            _webSocketPrivate.OnError += _webSocketPrivate_OnError;
-            _webSocketPrivate.Connect();
-        }
-
-        private void GenerateAuthenticate()
-        {
-            try
-            {
-                long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                string payload = timestamp + "+stream";
-                string signature = CreateSignatureBase64(_secretKey, payload);
-                string idGuid = Guid.NewGuid().ToString();
-
-                var auth = new
-                {
-                    op = "auth",
-                    id = "auth-req" + idGuid,
-                    t = timestamp,
-                    key = _publicKey,
-                    sig = signature
-                };
-
-                string authJson = JsonConvert.SerializeObject(auth);
-                _webSocketPrivate.Send(authJson);
-
-                SendLogMessage("Auth sent: " + authJson, LogMessageType.Trade);///&&&&&&&&&&&&&
-            }
-            catch (Exception exception)
-            {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
-            }
-        }
-
-        public static string CreateSignatureBase64(string secret, string payload)
-        {
-            byte[] keyBytes = Encoding.UTF8.GetBytes(secret);
-            byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
-
-            using (var hmac = new HMACSHA256(keyBytes))
-            {
-                byte[] hash = hmac.ComputeHash(payloadBytes);
-                return Convert.ToBase64String(hash);
-            }
-        }
-
-        /// <summary>
-        /// Отписаться от канала Ascendex WebSocket
-        /// </summary>
-        /// <param name="socket">WebSocket объект</param>
-        /// <param name="channel">Имя канала, например: order:cash</param>
-        private void UnsubscribeChannel(WebSocket socket, string channel)
-        {
-            try
-            {
-                if (socket != null && socket.ReadyState == WebSocketState.Open)
-                {
-                    var unsub = new
-                    {
-                        op = "unsub",
-                        ch = channel
-                    };
-
-                    string json = JsonConvert.SerializeObject(unsub);
-                    socket.Send(json);
-                    SendLogMessage("Unsubscribe: " + channel, LogMessageType.System);
-                }
-            }
-            catch (Exception ex)
-            {
-                SendLogMessage("Error Unsubscribe " + channel + ": " + ex.Message, LogMessageType.Error);
-            }
-        }
-
-        #endregion
-
-        #region 7 WebSocket events
-
-        //private void WebSocketPublicNew_OnOpen(object sender, EventArgs e)
-        //{
-        //    SendLogMessage("Ascendex WebSocket Public connected", LogMessageType.System);
-        //    //webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{security.Name}\"}}");
-        //    //webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
-        //    _webSocketPublic[0].Send("${\"op\":\"sub\",\"ch\":\"trades:{BTC/USDT}\"}"); 
-        //    _webSocketPublic[0].Send("${\"op\":\"sub\",\"ch\":\"depth:{BTC/USDT}\"}");
-        //}
-        private void WebSocketPublicNew_OnOpen(object sender, EventArgs e)
-        {
-            try
-            {
-                if (ServerStatus == ServerConnectStatus.Disconnect)
-                {
-                    SendLogMessage("AscendexSpot WebSocket Public connection open", LogMessageType.System);
-                    CheckSocketsActivate();
-                }
-            }
-            catch (Exception ex)
-            {
-                SendLogMessage(ex.ToString(), LogMessageType.Error);
-            }
-        }
-        private void WebSocketPublicNew_OnClose(object sender, CloseEventArgs e)
-        {
-            if (ServerStatus != ServerConnectStatus.Disconnect)
-            {
-                SendLogMessage($"Connection Closed by AscendexSpot. {e.Code} {e.Reason}. WebSocket Public Closed Event", LogMessageType.Error);
-                ServerStatus = ServerConnectStatus.Disconnect;
-                DisconnectEvent();
-            }
-
-        }
-        private void WebSocketPublicNew_OnMessage(object sender, MessageEventArgs e)
-        {
-
-            try
-            {
-                if (ServerStatus == ServerConnectStatus.Disconnect)
-                {
-                    return;
-                }
-
-                if (e == null)
-                {
-                    return;
-                }
-
-
-                if (FIFOListWebSocketPublicMessage == null)
-                {
-                    return;
-                }
-                //if (e.IsText)
-                //{
-                //    if (e.Data.Contains("ping"))
-                //    {
-                //        for (int i = 0; i < _webSocketPublic.Count; i++)
-                //        {
-                //            _webSocketPublic[i].Send("pong");
-                //        }
-
-                //        return;
-                //    }
-                //}
-
-                if (e.IsText)
-                {
-                    FIFOListWebSocketPublicMessage.Enqueue(e.Data);
-                }
-
-            }
-            catch (Exception error)
-            {
-                SendLogMessage(error.ToString(), LogMessageType.Error);
-            }
-        }
-        private void WebSocketPublicNew_OnError(object sender, ErrorEventArgs e)///переделать как в битфайнекс
-        {
-            if (e.Exception != null)
-            {
-                SendLogMessage(e.Exception.ToString(), LogMessageType.Error);
-            }
-            else
-            {
-                SendLogMessage("AscendexSpot WebSocket Public error" + e.ToString(), LogMessageType.Error);
-            }
-        }
-
-        private void _webSocketPrivate_OnOpen(object sender, EventArgs e)
-        {
-            try
-            {
-
-                if (ServerStatus == ServerConnectStatus.Disconnect)
-                {
-                    GenerateAuthenticate();
-
-                    CheckSocketsActivate();
-
-                    SendLogMessage("Subscribed to private channels (order & balance)", LogMessageType.System);
-
-                }
-            }
-            catch (Exception ex)
-            {
-                SendLogMessage(ex.ToString(), LogMessageType.Error);
-            }
-
-        }
-        private void _webSocketPrivate_OnClose(object sender, CloseEventArgs e)
-        {
-            if (ServerStatus != ServerConnectStatus.Disconnect)
-            {
-                SendLogMessage($"Connection Closed by AscendexSpot. {e.Code} {e.Reason}. WebSocket Private Closed Event", LogMessageType.Error);
-                ServerStatus = ServerConnectStatus.Disconnect;
-                DisconnectEvent();
-            }
-        }
-        private void _webSocketPrivate_OnMessage(object sender, MessageEventArgs e)
-        {
-            try
-            {
-                if (ServerStatus != ServerConnectStatus.Connect)
-                {
-                    return;
-                }
-
-                if (e == null)
-                {
-                    return;
-                }
-
-                if (string.IsNullOrEmpty(e.ToString()))
-                {
-                    return;
-                }
-
-                if (FIFOListWebSocketPrivateMessage == null)
-                {
-                    return;
-                }
-                if (e.IsText && e.Data.Contains("\"m\":\"connected\"") && e.Data.Contains("\"type\":\"unauth\""))
-                {
-
-                    SendLogMessage("Connected to private channels ", LogMessageType.System);
-                }
-
-                if (e.IsText && e.Data.Contains("\"op\":\"auth\"") && e.Data.Contains("\"code\":0"))
-                {
-
-                    SendLogMessage("Authorization to private channels", LogMessageType.System);
-                }
-
-                else if (e.Data.Contains("\"m\":\"ping\"")) //(e.IsText && e.Data.Contains("ping"))
-                {
-
-                    _webSocketPrivate.Send("{\"op\":\"pong\"}");
-
-                    //    return;
-
-                    //for (int i = 0; i < _webSocketPrivate.Count; i++)
-                    //{
-                    //    WebSocket socket = _webSocketPrivate[i];
-
-                    //if (socket.ReadyState == WebSocketState.Open)
-                    //{
-                    //    //  socket.Send("pong");
-                    //SendPong(socket);
-                    //SendLogMessage("📡 Отправлен pong на ping", LogMessageType.System);
-                    //}
-                    // }
-
-                    //return;
-                    //continue;
-                }
-                else
-                {
-                    FIFOListWebSocketPrivateMessage.Enqueue(e.Data);
-                }
-            }
-            catch (Exception error)
-            {
-                SendLogMessage(error.ToString(), LogMessageType.Error);
-                SendLogMessage($"WebSocket Private Error message read. Error: {error}", LogMessageType.Error);
-            }
-        }
-        private void _webSocketPrivate_OnError(object sender, ErrorEventArgs e)
-        {
-
-            if (e.Exception != null)
-            {
-                SendLogMessage(e.Exception.ToString(), LogMessageType.Error);
-            }
-            else
-            {
-                SendLogMessage("WebSocket Private error" + e.ToString(), LogMessageType.Error);
-            }
-        }
-
-        #endregion
-
-
-        private string _socketActivateLocker = "socketActivateLocker";
-        private List<string> _subscribledSecutiries = new List<string>();
-        private void CheckSocketsActivate()
-        {
-            try
-            {
-                lock (_socketActivateLocker)
-                {
-                    if (_webSocketPrivate == null
-                       || _webSocketPrivate?.ReadyState != WebSocketState.Open)
-                    {
-                        Disconnect();
-                        return;
-                    }
-
-                    if (_subscribledSecutiries.Count > 0)
-                    {
-                        if (_webSocketPublic.Count == 0
-                            || _webSocketPublic == null)
-                        {
-                            //Disconnect();
-                            return;
-                        }
-
-                        WebSocket webSocketPublic = _webSocketPublic[0];
-
-                        if (webSocketPublic == null
-                            || webSocketPublic?.ReadyState != WebSocketState.Open)
-                        {
-                            Disconnect();
-                            return;
-                        }
-                    }
-
-                    if (ServerStatus != ServerConnectStatus.Connect)
-                    {
-                        ServerStatus = ServerConnectStatus.Connect;
-                        ConnectEvent();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                SendLogMessage(ex.Message, LogMessageType.Error);
-            }
-        }
-
-
-
-        #region 8 WebSocket check alive
-        private void CheckAliveWebSocket()
-        {
-            while (true)
-            {
-                try
-                {
-                    Thread.Sleep(20000);
-
-                    if (ServerStatus == ServerConnectStatus.Disconnect)
-                    {
-                        continue;
-                    }
-                    if (_webSocketPublic != null
-                        && (_webSocketPrivate.ReadyState == WebSocketState.Open
-                    || _webSocketPrivate.ReadyState == WebSocketState.Connecting))
-                    {
-                        _webSocketPrivate.Send("{\"event\":\"ping\", \"cid\":1277}");
-                    }
-                    else
-                    {
-                        Disconnect();
-                    }
-
-                    if (_webSocketPrivate != null
-                        && (_webSocketPrivate.ReadyState == WebSocketState.Open
-                    || _webSocketPrivate.ReadyState == WebSocketState.Connecting))
-                    {
-                        _webSocketPrivate.Send("{\"event\":\"ping\", \"cid\":1274}");
-                    }
-                    else
-                    {
-                        Disconnect();
-                    }
-                }
-                catch (Exception error)
-                {
-                    SendLogMessage(error.ToString(), LogMessageType.Error);
-                }
-            }
-        }
-        public static void SendPong(WebSocket webSocket)
-        {
-            var pong = new { op = "pong" };
-            string json = JsonConvert.SerializeObject(pong);
-            webSocket.Send(json);
-
-        }
-        #endregion
-
-        #region  9  WebSocket security subscrible
-
-
-        private RateGate _rateGateSubscribed = new RateGate(1, TimeSpan.FromMilliseconds(2500));
-
-        public void Subscrible(Security security)
-        {
-            try
-            {
-                _rateGateSubscribed.WaitToProceed();
-
-                CreateSubscribleMessageWebSocket(security);
-                Thread.Sleep(100);
-            }
-            catch (Exception exception)
-            {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
-            }
-        }
-
-        private void CreateSubscribleMessageWebSocket(Security security)
-        {
-            try
-            {
-                if (ServerStatus == ServerConnectStatus.Disconnect)
-                {
-                    return;
-                }
-
-                for (int i = 0; i < _subscribledSecutiries.Count; i++)
-                {
-                    if (_subscribledSecutiries[i].Equals(security.Name))
-                    {
-                        return;
-                    }
-                }
-
-                if (_webSocketPublic.Count == 0)
-                {
-                    WebSocket socket = CreateNewPublicSocket();
-
-                    if (socket == null)
-                    {
-                        return;
-                    }
-
-                    DateTime timeEnd = DateTime.Now.AddSeconds(10);
-                    while (socket.ReadyState != WebSocketState.Open)
-                    {
-                        Thread.Sleep(1000);
-
-                        if (timeEnd < DateTime.Now)
-                        {
-                            break;
-                        }
-                    }
-
-                    if (socket.ReadyState == WebSocketState.Open)
-                    {
-                        _webSocketPublic.Add(socket);
-                    }
-                }
-
-                if (_webSocketPublic.Count == 0)
-                {
-                    return;
-                }
-
-                _subscribledSecutiries.Add(security.Name);
-
-                WebSocket webSocketPublic = _webSocketPublic[_webSocketPublic.Count - 1];
-
-                if (webSocketPublic.ReadyState == WebSocketState.Open
-                    && _subscribledSecutiries.Count != 0
-                    && _subscribledSecutiries.Count % 60 == 0)
-                {
-                    // creating a new socket
-                    WebSocket newSocket = CreateNewPublicSocket();
-
-                    DateTime timeEnd = DateTime.Now.AddSeconds(10);
-                    while (newSocket.ReadyState != WebSocketState.Open)
-                    {
-                        Thread.Sleep(1000);
-
-                        if (timeEnd < DateTime.Now)
-                        {
-                            break;
-                        }
-                    }
-
-                    if (newSocket.ReadyState == WebSocketState.Open)
-                    {
-                        _webSocketPublic.Add(newSocket);
-                        webSocketPublic = newSocket;
-                    }
-                }
-
-                if (webSocketPublic != null)
-                {
-                    webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
-                    webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{security.Name}\"}}");
-                    webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
-
-                }
-                if (_webSocketPrivate != null)
-                {
-                    _webSocketPrivate.Send("{\"op\":\"sub\",\"ch\":\"order:cash\"}");
-
-                }
-            }
-            catch (Exception exception)
-            {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
-            }
-        }
-        private void UnsubscribeFromAllWebSockets()
-        {
-            try
-            {
-                // Проверяем наличие публичных WebSocket-подключений
-                if (_webSocketPublic != null && _webSocketPublic.Count != 0)
-                {
-                    for (int i = 0; i < _webSocketPublic.Count; i++)
-                    {
-                        WebSocket webSocketPublic = _webSocketPublic[i];
-
-                        try
-                        {
-                            // Проверяем, открыт ли сокет
-                            if (webSocketPublic != null && webSocketPublic.ReadyState == WebSocketState.Open)
-                            {
-                                // Проверяем наличие подписанных инструментов
-                                if (_subscribledSecutiries != null)
-                                {
-                                    for (int i2 = 0; i2 < _subscribledSecutiries.Count; i2++)
-                                    {
-                                        string symbol = _subscribledSecutiries[i2];
-
-                                        webSocketPublic.Send($"{{\"op\":\"unsub\",\"ch\":\"trades:{symbol}\"}}");
-                                        webSocketPublic.Send($"{{\"op\":\"unsub\",\"ch\":\"depth:{symbol}\"}}");
-                                        webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{symbol}\"}}");
-                                    }
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            // Логируем ошибку отписки
-                            SendLogMessage($"{ex.Message} {ex.StackTrace}", LogMessageType.Error);
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // Игнорируем общие ошибки
-            }
-
-            // Обработка приватного WebSocket
-            if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open)
-            {
-                try
-                {
-                    // Отписка от приватного канала заказов
-                    _webSocketPrivate.Send("{\"op\":\"unsub\",\"ch\":\"order:cash\"}");
-                }
-                catch
-                {
-                    // Игнорируем ошибки
-                }
-            }
-        }
-
-        private void DeleteWebSocketConnection()
-        {
-            if (_webSocketPublic != null)
-            {
-                try
-                {
-                    for (int i = 0; i < _webSocketPublic.Count; i++)
-                    {
-                        WebSocket webSocketPublic = _webSocketPublic[i];
-
-                        webSocketPublic.OnOpen -= WebSocketPublicNew_OnOpen;
-                        webSocketPublic.OnClose -= WebSocketPublicNew_OnClose;
-                        webSocketPublic.OnMessage -= WebSocketPublicNew_OnMessage;
-                        webSocketPublic.OnError -= WebSocketPublicNew_OnError;
-
-                        if (webSocketPublic.ReadyState == WebSocketState.Open)
-                        {
-                            webSocketPublic.CloseAsync();
-                        }
-                        webSocketPublic = null;
-                    }
-                }
-                catch
-                {
-                    // ignore
-                }
-
-                _webSocketPublic.Clear();
-            }
-
-
-            if (_webSocketPrivate != null)
-            {
-                try
-                {
-                    _webSocketPrivate.OnOpen -= _webSocketPrivate_OnOpen;
-                    _webSocketPrivate.OnClose -= _webSocketPrivate_OnClose;
-                    _webSocketPrivate.OnMessage -= _webSocketPrivate_OnMessage;
-                    _webSocketPrivate.OnError -= _webSocketPrivate_OnError;
-                    _webSocketPrivate.CloseAsync();
-                }
-                catch
-                {
-                    // ignore
-                }
-
-                _webSocketPrivate = null;
-            }
-        }
-
-
-
-
-        //private void UnsubscribeFromAllChannels(Security security)
-        //{
-        //    try
-        //    {
-        //        if (ServerStatus == ServerConnectStatus.Disconnect)
-        //        {
-        //            return;
-        //        }
-
-        //        for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
-        //        {
-        //            WebSocket webSocketPublicMarketDepths = _webSocketPublicMarketDepths[i];
-
-        //            if (webSocketPublicMarketDepths != null && webSocketPublicMarketDepths?.ReadyState == WebSocketState.Open)
-        //            {
-        //                //  { "op": "unsub", "id": "abc123", "ch":"trades:ASD/USDT" }
-        //                string message = $"{{\"op\":\"unsub\",\"ch\":\"depth:{security.Name}\"}}";
-
-        //                webSocketPublicMarketDepths.Send(message);
-        //            }
-        //        }
-
-        //        for (int i = 0; i < _webSocketPublicTrades.Count; i++)
-        //        {
-        //            WebSocket webSocketPublicTrades = _webSocketPublicTrades[i];
-
-        //            if (webSocketPublicTrades != null && webSocketPublicTrades?.ReadyState == WebSocketState.Open)
-        //            {
-        //                string message = $"{{\"op\":\"unsub\",\"ch\":\"trades:{security.Name}\"}}";
-
-        //                webSocketPublicTrades.Send(message);
-        //            }
-
-        //            SendLogMessage("All subscriptions have been successfully removed", LogMessageType.System);
-        //        }
-        //    }
-        //    catch (Exception exception)
-        //    {
-        //        SendLogMessage("Error unsubscribing from channels:" + exception.ToString(), LogMessageType.Error);
-        //    }
-        //}
-
-        #endregion
-
-        #region  10 WebSocket parsing the messages
-
-        public event Action<List<Security>> SecurityEvent;
-        public event Action<News> NewsEvent;
-        public event Action<MarketDepth> MarketDepthEvent;
-        public event Action<Trade> NewTradesEvent;
-        public event Action<Order> MyOrderEvent;
-        public event Action<MyTrade> MyTradeEvent;
-        public event Action<OptionMarketDataForConnector> AdditionalMarketDataEvent;
-
 
         private void PrivateMessageReader()
         {
@@ -1560,22 +858,18 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         //continue;
                         return;
                     }
-                    //else if (message.Contains("\"m\":\"trade\""))
-                    //{
-                    //    var tradeMessage = JsonConvert.DeserializeObject<WebSocketMessage<AscendexSpotMyTradeData>>(message);
-                    //    UpdateMyTrade(message);
-                    //}
+
                     else if (message.Contains("\"m\":\"order\""))
                     {
                         var orderMessage = JsonConvert.DeserializeObject<WebSocketMessage<AscendexSpotOrderData>>(message);
 
-                        //   if (cancel - all);
                         UpdateOrder(orderMessage);
 
                     }
                     else if (message.Contains("\"m\":\"balance\""))
                     {
                         var portfolioMessage = JsonConvert.DeserializeObject<WebSocketMessage<AscendexSpotPortfolio>>(message);
+
                         UpdatePortfolio(portfolioMessage);
                     }
                 }
@@ -1586,6 +880,691 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
             }
         }
+
+
+
+        private ConcurrentQueue<string> FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
+        private ConcurrentQueue<string> FIFOListWebSocketPublicMessage = new ConcurrentQueue<string>();
+
+        private List<WebSocket> _webSocketPublic = new List<WebSocket>();
+
+        private WebSocket _webSocketPrivate;
+        private const string _webSocketUrl = "wss://ascendex.com/1/api/pro/v1/stream";
+
+
+        private void CreatePublicWebSocketConnect()
+        {
+            try
+            {
+                if (FIFOListWebSocketPublicMessage == null)
+                {
+                    FIFOListWebSocketPublicMessage = new ConcurrentQueue<string>();
+                }
+
+                _webSocketPublic.Add(CreateNewPublicSocket());
+            }
+            catch (Exception ex)
+            {
+                SendLogMessage($"{ex.Message} {ex.StackTrace}", LogMessageType.Error);
+            }
+        }
+
+
+        private WebSocket CreateNewPublicSocket()
+        {
+            try
+            {
+                WebSocket webSocketPublicNew = new WebSocket(_webSocketUrl);
+
+                //if (_myProxy != null)
+                //{
+                //    webSocketPublicNew.SetProxy(_myProxy);
+                //}
+
+                webSocketPublicNew.EmitOnPing = true;
+                webSocketPublicNew.OnOpen += WebSocketPublicNew_OnOpen;
+                webSocketPublicNew.OnClose += WebSocketPublicNew_OnClose;
+                webSocketPublicNew.OnMessage += WebSocketPublicNew_OnMessage;
+                webSocketPublicNew.OnError += WebSocketPublicNew_OnError;
+                webSocketPublicNew.Connect();
+
+                return webSocketPublicNew;
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                return null;
+            }
+        }
+
+
+        private void CreatePrivateWebSocketConnect()
+        {
+            try
+            {
+                if (_webSocketPrivate != null)
+                {
+                    return;
+                }
+
+                _webSocketPrivate = new WebSocket(_webSocketUrl);
+
+                //if (_myProxy != null)
+                //{
+                //    _webSocketPrivate.SetProxy(_myProxy);
+                //}
+
+                _webSocketPrivate.EmitOnPing = true;
+                _webSocketPrivate.OnOpen += _webSocketPrivate_OnOpen;
+                _webSocketPrivate.OnClose += _webSocketPrivate_OnClose;
+                _webSocketPrivate.OnMessage += _webSocketPrivate_OnMessage;
+                _webSocketPrivate.OnError += _webSocketPrivate_OnError;
+
+                _webSocketPrivate.Connect();
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
+        private void DeleteWebSocketConnection()
+        {
+            if (_webSocketPublic != null)
+            {
+                try
+                {
+                    for (int i = 0; i < _webSocketPublic.Count; i++)
+                    {
+                        WebSocket webSocketPublic = _webSocketPublic[i];
+
+                        webSocketPublic.OnOpen -= WebSocketPublicNew_OnOpen;
+                        webSocketPublic.OnClose -= WebSocketPublicNew_OnClose;
+                        webSocketPublic.OnMessage -= WebSocketPublicNew_OnMessage;
+                        webSocketPublic.OnError -= WebSocketPublicNew_OnError;
+
+                        if (webSocketPublic.ReadyState == WebSocketState.Open)
+                        {
+                            webSocketPublic.CloseAsync();
+                        }
+                        webSocketPublic = null;
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                _webSocketPublic.Clear();
+            }
+
+
+            if (_webSocketPrivate != null)
+            {
+                try
+                {
+                    _webSocketPrivate.OnOpen -= _webSocketPrivate_OnOpen;
+                    _webSocketPrivate.OnClose -= _webSocketPrivate_OnClose;
+                    _webSocketPrivate.OnMessage -= _webSocketPrivate_OnMessage;
+                    _webSocketPrivate.OnError -= _webSocketPrivate_OnError;
+
+                    _webSocketPrivate.CloseAsync();
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                _webSocketPrivate = null;
+            }
+        }
+
+
+        private void GenerateAuthenticate()
+        {
+            try
+            {
+                long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                string payload = timestamp + "+stream";
+                string signature = CreateSignatureBase64(_secretKey, payload);
+                string idGuid = Guid.NewGuid().ToString();
+
+                var auth = new
+                {
+                    op = "auth",
+                    id = "auth-req" + idGuid,
+                    t = timestamp,
+                    key = _publicKey,
+                    sig = signature
+                };
+
+                string authJson = JsonConvert.SerializeObject(auth);
+                _webSocketPrivate.Send(authJson);
+
+                SendLogMessage("Auth sent: " + authJson, LogMessageType.Trade);
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
+
+        public static string CreateSignatureBase64(string secret, string payload)
+        {
+            byte[] keyBytes = Encoding.UTF8.GetBytes(secret);
+            byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
+
+            using (var hmac = new HMACSHA256(keyBytes))
+            {
+                byte[] hash = hmac.ComputeHash(payloadBytes);
+                return Convert.ToBase64String(hash);
+            }
+        }
+
+        #endregion
+
+        #region 7 WebSocket events
+
+        //private void WebSocketPublicNew_OnOpen(object sender, EventArgs e)
+        //{
+        //    SendLogMessage("Ascendex WebSocket Public connected", LogMessageType.System);
+        //    //webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{security.Name}\"}}");
+        //    //webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
+        //    _webSocketPublic[0].Send("${\"op\":\"sub\",\"ch\":\"trades:{BTC/USDT}\"}"); 
+        //    _webSocketPublic[0].Send("${\"op\":\"sub\",\"ch\":\"depth:{BTC/USDT}\"}");
+        //}
+        private void WebSocketPublicNew_OnOpen(object sender, EventArgs e)
+        {
+            try
+            {
+                if (ServerStatus == ServerConnectStatus.Disconnect)
+                {
+                    SendLogMessage("AscendexSpot WebSocket Public connection open", LogMessageType.System);
+                    CheckSocketsActivate();
+                }
+            }
+            catch (Exception ex)
+            {
+                SendLogMessage(ex.ToString(), LogMessageType.Error);
+            }
+        }
+        private void WebSocketPublicNew_OnClose(object sender, CloseEventArgs e)
+        {
+            if (ServerStatus != ServerConnectStatus.Disconnect)
+            {
+                SendLogMessage($"Connection Closed by AscendexSpot. {e.Code} {e.Reason}. WebSocket Public Closed Event", LogMessageType.Error);
+                ServerStatus = ServerConnectStatus.Disconnect;
+                DisconnectEvent();
+            }
+
+        }
+        private void WebSocketPublicNew_OnMessage(object sender, MessageEventArgs e)
+        {
+
+            try
+            {
+                if (ServerStatus == ServerConnectStatus.Disconnect
+                    || e?.Data == null
+                    || string.IsNullOrEmpty(e.Data))
+                {
+                    return;
+                }
+
+                if (FIFOListWebSocketPublicMessage == null)
+                {
+                    return;
+                }
+                if (e.IsText)
+                {
+                    if (e.Data.Contains("ping"))
+                    {
+                        for (int i = 0; i < _webSocketPublic.Count; i++)
+                        {
+                            _webSocketPublic[i].Send("{\"op\":\"pong\"}");
+
+                        }
+
+                        return;
+                    }
+                }
+
+                if (e.IsText)
+                {
+                    FIFOListWebSocketPublicMessage.Enqueue(e.Data);
+                }
+
+            }
+            catch (Exception error)
+            {
+                SendLogMessage(error.ToString(), LogMessageType.Error);
+            }
+        }
+        private void WebSocketPublicNew_OnError(object sender, ErrorEventArgs e)///переделать как в битфайнекс
+        {
+            if (e.Exception != null)
+            {
+                SendLogMessage(e.Exception.ToString(), LogMessageType.Error);
+            }
+            else
+            {
+                SendLogMessage("AscendexSpot WebSocket Public error" + e.ToString(), LogMessageType.Error);
+            }
+        }
+
+        private void _webSocketPrivate_OnOpen(object sender, EventArgs e)
+        {
+            try
+            {
+
+                if (ServerStatus == ServerConnectStatus.Disconnect)
+                {
+                    GenerateAuthenticate();
+                    CheckSocketsActivate();
+
+                    SendLogMessage("Connection to private data is Open", LogMessageType.System);
+
+                }
+            }
+            catch (Exception ex)
+            {
+                SendLogMessage(ex.ToString(), LogMessageType.Error);
+            }
+
+        }
+        private void _webSocketPrivate_OnClose(object sender, CloseEventArgs e)
+        {
+            try
+            {
+                if (ServerStatus != ServerConnectStatus.Disconnect)
+                {
+                    SendLogMessage($"Connection Closed by AscendexSpot. {e.Code} {e.Reason}. WebSocket Private Closed Event", LogMessageType.Error);
+                    ServerStatus = ServerConnectStatus.Disconnect;
+                    DisconnectEvent();
+                }
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
+        private void _webSocketPrivate_OnMessage(object sender, MessageEventArgs e)
+        {
+            try
+            {
+                if (ServerStatus == ServerConnectStatus.Disconnect
+                   || e?.Data == null
+                   || string.IsNullOrEmpty(e?.Data))
+                {
+                    return;
+                }
+
+                if (FIFOListWebSocketPrivateMessage == null)
+                {
+                    return;
+                }
+
+                else if (e.IsText && e.Data.Contains("\"m\":\"connected\"") && e.Data.Contains("\"type\":\"unauth\""))
+                {
+
+                    SendLogMessage("Connected to private channels ", LogMessageType.System);
+                }
+
+                else if (e.IsText && e.Data.Contains("\"op\":\"auth\"") && e.Data.Contains("\"code\":0"))
+                {
+
+                    SendLogMessage("Authorization to private channels", LogMessageType.System);
+                }
+
+                else if (e.Data.Contains("\"m\":\"ping\"")) //(e.IsText && e.Data.Contains("ping"))
+                {
+
+                    _webSocketPrivate.Send("{\"op\":\"pong\"}");
+
+                    //    return;
+
+                    //for (int i = 0; i < _webSocketPrivate.Count; i++)
+                    //{
+                    //    WebSocket socket = _webSocketPrivate[i];
+
+                    //if (socket.ReadyState == WebSocketState.Open)
+                    //{
+                    //    //  socket.Send("pong");
+                    //SendPong(socket);
+                    //SendLogMessage("📡 Отправлен pong на ping", LogMessageType.System);
+                    //}
+                    // }
+
+                    //return;
+                    //continue;
+                }
+
+                FIFOListWebSocketPrivateMessage.Enqueue(e.Data);
+
+            }
+            catch (Exception error)
+            {
+                SendLogMessage(error.ToString(), LogMessageType.Error);
+
+            }
+        }
+        private void _webSocketPrivate_OnError(object sender, ErrorEventArgs e)
+        {
+            try
+
+            {
+                if (e.Exception != null)
+                {
+                    SendLogMessage($"WebSocket private Error: {e.Exception}", LogMessageType.Error);
+                }
+
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
+
+        #endregion
+
+
+        private string _socketActivateLocker = "socketActivateLocker";
+        private List<string> _subscribedSecurities = new List<string>();
+        private void CheckSocketsActivate()
+        {
+            lock (_socketActivateLocker)
+            {
+                try
+                {
+
+                    if (_webSocketPrivate == null
+                       || _webSocketPrivate?.ReadyState != WebSocketState.Open)
+                    {
+                        Disconnect();
+                        return;
+                    }
+
+                    //if (_subscribedSecurities.Count > 0)
+                    //{
+                        if (_webSocketPublic.Count == 0
+                           /* || _webSocketPublic == null*/)
+                        {
+                            Disconnect();
+                            return;
+                        }
+
+                        WebSocket webSocketPublic = _webSocketPublic[0];
+
+                        if (webSocketPublic == null
+                            || webSocketPublic?.ReadyState != WebSocketState.Open)
+                        {
+                            Disconnect();
+                            return;
+                        }
+                  //  }
+
+                    if (ServerStatus != ServerConnectStatus.Connect)
+                    {
+                        ServerStatus = ServerConnectStatus.Connect;
+                        ConnectEvent();
+                    }
+
+                    SendLogMessage("All sockets activated.", LogMessageType.System);
+                }
+                catch (Exception ex)
+                {
+                    SendLogMessage(ex.Message, LogMessageType.Error);
+                }
+            }
+        }
+
+
+
+        #region 8 WebSocket check alive
+        private void CheckAliveWebSocket()
+        {
+            while (true)
+            {
+                try
+                {
+                    Thread.Sleep(2000);
+
+                    if (ServerStatus == ServerConnectStatus.Disconnect)
+                    {
+                        continue;
+                    }
+                    for (int i = 0; i < _webSocketPublic.Count; i++)
+                    {
+                        WebSocket webSocketPublic = _webSocketPublic[i];
+                        if (webSocketPublic != null
+                        && (webSocketPublic.ReadyState == WebSocketState.Open
+                  /*  || webSocketPublic.ReadyState == WebSocketState.Connecting)*/))
+                        {
+
+                            webSocketPublic.Send("{\"op\":\"pong\"}");
+                        }
+                        else
+                        {
+                            Disconnect();
+                        }
+                    }
+                    if (_webSocketPrivate != null
+                        && (_webSocketPrivate.ReadyState == WebSocketState.Open
+                    || _webSocketPrivate.ReadyState == WebSocketState.Connecting))
+                    {
+
+                        _webSocketPrivate.Send("{\"op\":\"pong\"}");
+                    }
+                    else
+                    {
+                        Disconnect();
+                    }
+                }
+                catch (Exception error)
+                {
+                    SendLogMessage(error.ToString(), LogMessageType.Error);
+                }
+            }
+        }
+        public static void SendPong(WebSocket webSocket)
+        {
+            var pong = new { op = "pong" };
+            string json = JsonConvert.SerializeObject(pong);
+            webSocket.Send(json);
+
+        }
+        #endregion
+
+        #region  9  WebSocket security subscribe
+
+
+        private RateGate _rateGateSubscribed = new RateGate(1, TimeSpan.FromMilliseconds(2500));
+
+        public void Subscrible(Security security)//////ошибка в слове Subscrible
+        {
+            try
+            {
+                _rateGateSubscribed.WaitToProceed();
+
+                CreateSubscribeMessageWebSocket(security);
+                Thread.Sleep(100);
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
+
+        private void CreateSubscribeMessageWebSocket(Security security)
+        {
+            try
+            {
+                _rateGateSubscribed.WaitToProceed();
+
+                if (ServerStatus == ServerConnectStatus.Disconnect)
+                {
+                    return;
+                }
+
+                for (int i = 0; i < _subscribedSecurities.Count; i++)
+                {
+                    if (_subscribedSecurities[i].Equals(security.Name))
+                    {
+                        return;
+                    }
+                }
+
+                _subscribedSecurities.Add(security.Name);
+
+                if (_webSocketPublic == null
+                    ||_webSocketPublic.Count == 0) 
+                     
+                {
+                    SendLogMessage("Нет доступных WebSocket для подписки", LogMessageType.Error);
+                    return;
+                }
+
+                WebSocket webSocketPublic = _webSocketPublic[_webSocketPublic.Count - 1];// Берем последний сокет в списке
+
+                int MaxWebSocketCount = 5; // максимум подписок на один сокет
+                int MaxSubsPerSocket = 60;// Максимум подписок на один сокет
+
+
+
+                //if (webSocketPublic.ReadyState == WebSocketState.Open
+                //    && _subscribedSecurities.Count != 0
+                //    && _subscribedSecurities.Count % MaxSubsPerSocket == 0)
+                if (_subscribedSecurities.Count % MaxSubsPerSocket == 0)
+                {
+                    if (_webSocketPublic.Count >= MaxWebSocketCount)
+                    {     
+                        SendLogMessage("Превышен лимит WebSocket-соединений. Подписка будет отложена.", LogMessageType.Error);
+                        return;
+                    }
+                    {
+                        WebSocket newSocket = CreateNewPublicSocket();
+
+                        DateTime timeEndPublicSocket = DateTime.Now.AddSeconds(10);
+                        while (newSocket.ReadyState != WebSocketState.Open)
+                        {
+                            Thread.Sleep(500);
+
+                            if (DateTime.Now > timeEndPublicSocket)
+                            {
+                                SendLogMessage("WebSocket не открылся вовремя", LogMessageType.Error);
+                                break;
+                            }
+                        }
+
+                        if (newSocket.ReadyState == WebSocketState.Open)//надо условие или нет
+                        {
+                            _webSocketPublic.Add(newSocket);
+                            webSocketPublic = newSocket;
+                        }
+                    }
+
+                    if (webSocketPublic != null && webSocketPublic.ReadyState == WebSocketState.Open)
+                    {
+                        webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
+                        webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{security.Name}\"}}");
+                        webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
+
+                    }
+
+                    if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open)
+                    {
+                        _webSocketPrivate.Send("{\"op\":\"sub\",\"ch\":\"order:cash\"}");
+
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
+        private void UnsubscribeFromAllWebSockets()
+        {
+            try
+            {
+
+                if (ServerStatus == ServerConnectStatus.Disconnect)
+                {
+                    return;
+                }
+
+                if (_webSocketPublic != null && _webSocketPublic.Count != 0)
+                {
+                    for (int i = 0; i < _webSocketPublic.Count; i++)
+                    {
+                        WebSocket webSocketPublic = _webSocketPublic[i];
+
+                        try
+                        {
+                            // Проверяем, что сокет открыт
+                            if (webSocketPublic != null && webSocketPublic.ReadyState == WebSocketState.Open)
+                            {
+                                // Если есть подписанные инструменты
+                                if (_subscribedSecurities != null && _subscribedSecurities.Count > 0)
+                                {
+                                    for (int j = 0; j < _subscribedSecurities.Count; j++)
+                                    {
+                                        string symbol = _subscribedSecurities[j];
+
+                                        // Отписка от трейдов
+                                        webSocketPublic.Send($"{{\"op\":\"unsub\",\"ch\":\"trades:{symbol}\"}}");
+
+                                        // Отписка от стакана
+                                        webSocketPublic.Send($"{{\"op\":\"unsub\",\"ch\":\"depth:{symbol}\"}}");
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // Логируем ошибки, связанные с конкретным WebSocket
+                            SendLogMessage($"Unsubscribe error on public socket: {ex.Message} {ex.StackTrace}", LogMessageType.Error);
+                        }
+                    }
+                }
+
+                // Отписываемся от ордеров (private socket) — только один раз, вне цикла
+                if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open)
+                {
+                    try
+                    {
+                        _webSocketPrivate.Send("{\"op\":\"unsub\",\"ch\":\"order:cash\"}");
+                    }
+                    catch (Exception ex)
+                    {
+                        SendLogMessage($"Unsubscribe error on private socket: {ex.Message} {ex.StackTrace}", LogMessageType.Error);
+                    }
+                }
+
+                // Очищаем список подписок
+                _subscribedSecurities.Clear();
+            }
+            catch (Exception ex)
+            {
+                // Логируем общую ошибку
+                SendLogMessage($"General unsubscribe error: {ex.Message} {ex.StackTrace}", LogMessageType.Error);
+            }
+        }
+
+
+
+
+        #endregion
+
+        #region  10 WebSocket parsing the messages
+
+        public event Action<List<Security>> SecurityEvent;
+        public event Action<News> NewsEvent;
+        public event Action<MarketDepth> MarketDepthEvent;
+        public event Action<Trade> NewTradesEvent;
+        public event Action<Order> MyOrderEvent;
+        public event Action<MyTrade> MyTradeEvent;
+        public event Action<OptionMarketDataForConnector> AdditionalMarketDataEvent;
+
+
 
 
 
@@ -1971,7 +1950,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     //action": "cancel-Order",
                     //action": "cancel-All"
                     Order updateOrder = new Order();
-                  //  OrderStateType orderState = GetOrderState(json.data.st);
+                    //  OrderStateType orderState = GetOrderState(json.data.st);
 
 
                     updateOrder.SecurityNameCode = json.data.s;
@@ -1979,7 +1958,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     updateOrder.State = GetOrderState(json.data.st);
                     updateOrder.NumberMarket = json.data.orderId;
                     updateOrder.NumberUser = GetNumberUserByOrderId(updateOrder.NumberMarket);
-                    
+
                     updateOrder.Side = (json.data.sd == "Buy") ? Side.Buy : Side.Sell;
                     updateOrder.TypeOrder = (json.data.ot == "Limit") ? OrderPriceType.Limit : OrderPriceType.Market;
                     updateOrder.Price = (json.data.p).ToDecimal();
@@ -2475,20 +2454,20 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 // Десериализуем ответ
                 AscendexSpotQueryOrderResponse queryOrder = JsonConvert.DeserializeObject<AscendexSpotQueryOrderResponse>(request.Content);
-               
+
 
                 if (queryOrder != null && queryOrder.code != "0")
                 {
                     SendLogMessage($"Error status order: {queryOrder.code}, message :{request.Content}", LogMessageType.Error);
                     return;
                 }
-                    //if (response != null && response.code == "0" && response.data != null && response.data.Count > 0)
-                    //{
-                    //    for (int i = 0; i < response.data.Count; i++)
-                    //    {
-                    //        AscendexSpotQueryOrderMessage queryOrder = response.data[i];
+                //if (response != null && response.code == "0" && response.data != null && response.data.Count > 0)
+                //{
+                //    for (int i = 0; i < response.data.Count; i++)
+                //    {
+                //        AscendexSpotQueryOrderMessage queryOrder = response.data[i];
 
-                    // Лог текущего ордера
+                // Лог текущего ордера
                 SendLogMessage($"Order Status: {queryOrder.data.orderId} | Статус: {queryOrder.data.status}", LogMessageType.Error);
 
                 // Обновляем статус текущего локального ордера
@@ -2508,13 +2487,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     myTrade.Volume = queryOrder.data.cumFilledQty.ToDecimal();
                     myTrade.Side = (queryOrder.data.side == "Buy") ? Side.Buy : Side.Sell;
 
-                    // Отдельная переменная под комиссию, если нужно её учитывать отдельно
+
                     string commissionSecName = queryOrder.data.cumFee;
 
-                    // Вызываем событие трейда
+
                     MyTradeEvent?.Invoke(myTrade);
 
-                    // Лог трейда
                     SendLogMessage(myTrade.ToString(), LogMessageType.Trade);
                 }
                 //  }
@@ -2536,6 +2514,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
 
         private RateGate _rateGateOrder = new RateGate(1, TimeSpan.FromMilliseconds(7000));
+
         //private void CreateMyTrade(string symbol, int numberUser)
         //{
         //    _rateGateOrder.WaitToProceed();
@@ -2590,8 +2569,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private OrderStateType GetOrderState(string orderStateResponse)
         {
             if (string.IsNullOrEmpty(orderStateResponse))
-            { 
-                return OrderStateType.None; 
+            {
+                return OrderStateType.None;
             }
 
             if (orderStateResponse.StartsWith("New") /*|| (orderStateResponse.StartsWith("Ack"))*/)
