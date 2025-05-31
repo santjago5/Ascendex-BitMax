@@ -123,7 +123,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             public bool IsCanChangeOrderPrice
             {
-                get { return true; }
+                get { return false; }
             }
 
             public TimeFramePermission TradeTimeFramePermission

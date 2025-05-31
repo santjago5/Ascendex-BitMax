@@ -25,6 +25,7 @@ using WebSocketState = OsEngine.Entity.WebSocketOsEngine.WebSocketState;
 using WebSocket = OsEngine.Entity.WebSocketOsEngine.WebSocket;
 using CloseEventArgs = OsEngine.Entity.WebSocketOsEngine.CloseEventArgs;
 using MessageEventArgs = OsEngine.Entity.WebSocketOsEngine.MessageEventArgs;
+using OsEngine.Market.Servers.Bitfinex.Json;
 
 
 
@@ -56,6 +57,16 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             ServerStatus = ServerConnectStatus.Disconnect;
 
+            Thread threadForPublicMessagesMarketDepths = new Thread(PublicMessageMarketDepthsReader);
+            threadForPublicMessagesMarketDepths.IsBackground = true;
+            threadForPublicMessagesMarketDepths.Name = "PublicMarketDepthsMessageReaderAscendexSpot";
+            threadForPublicMessagesMarketDepths.Start();
+
+            Thread threadForPublicTradesMessages = new Thread(PublicMessageTradesReader);
+            threadForPublicTradesMessages.IsBackground = true;
+            threadForPublicTradesMessages.Name = "PublicTradeMessageReaderAscendexSpot";
+            threadForPublicTradesMessages.Start();
+
             Thread threadForPrivateMessages = new Thread(PrivateMessageReader);
             threadForPrivateMessages.IsBackground = true;
             threadForPrivateMessages.Name = "PrivateMessageReaderAscendexSpot";
@@ -66,10 +77,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
             threadCheckAliveWebSocket.Name = "CheckAliveWebSocket";
             threadCheckAliveWebSocket.Start();
 
-            Thread messageReaderPublic = new Thread(PublicMessageReader);
-            messageReaderPublic.IsBackground = true;
-            messageReaderPublic.Name = "PublicMessageReaderAscendexSpot";
-            messageReaderPublic.Start();
+
+
         }
 
 
@@ -104,11 +113,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     if (result != null && result.code == "0")
                     {
-                        FIFOListWebSocketPublicMessage = new ConcurrentQueue<string>();
+                        FIFOListWebSocketPublicMarketDepthsMessage = new ConcurrentQueue<string>();
+                        FIFOListWebSocketPublicTradesMessage = new ConcurrentQueue<string>();
                         FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
-                        CreatePublicWebSocketConnect();
+                        CreatePublicWebSocketMarketDepthsConnect();
+                        CreatePublicWebSocketTradesConnect();
                         CreatePrivateWebSocketConnect();
-                        CheckSocketsActivate();
+                        CheckActivationSockets();
+
 
                         SendLogMessage("Start Ascendex Connection", LogMessageType.System);
                     }
@@ -157,7 +169,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
 
             FIFOListWebSocketPrivateMessage = null;
-            FIFOListWebSocketPublicMessage = null;
+            FIFOListWebSocketPublicMarketDepthsMessage = null;
+            FIFOListWebSocketPublicTradesMessage = null;
 
             Disconnect();
         }
@@ -712,9 +725,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         #region 6 WebSocket creation
 
-        private void PublicMessageReader()
+        private void PublicMessageMarketDepthsReader()
         {
-            Thread.Sleep(5000);
+            Thread.Sleep(2000);
 
             while (true)
             {
@@ -726,7 +739,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         continue;
                     }
 
-                    if (FIFOListWebSocketPublicMessage.IsEmpty)
+                    if (FIFOListWebSocketPublicMarketDepthsMessage.IsEmpty)
                     {
                         Thread.Sleep(1);
                         continue;
@@ -734,7 +747,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     //{"m":"connected","type":"unauth"}
                     //{"m":"sub","ch":"depth:1INCH/USDT","code":0}
 
-                    FIFOListWebSocketPublicMessage.TryDequeue(out string message);
+                    FIFOListWebSocketPublicMarketDepthsMessage.TryDequeue(out string message);
                     // if(){
                     if (message == null)
                     {
@@ -753,16 +766,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         UpdateDepth(message);
                         continue;
                     }
-                    else if (message.Contains("\"m\":\"trades\""))
-                    {
-                        UpdateTrade(message);
-                        continue;
-                    }
+
                     else if (message.Contains("\"m\":\"ping\""))
                     {
-                        for (int i = 0; i < _webSocketPublic.Count; i++)
+                        for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
                         {
-                            WebSocket socket = _webSocketPublic[i];
+                            WebSocket socket = _webSocketPublicMarketDepths[i];
 
                             if (socket.ReadyState == WebSocketState.Open)
                             {
@@ -796,6 +805,48 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
             }
         }
+
+
+
+        private void PublicMessageTradesReader()
+        {
+            while (true)
+            {
+                try
+                {
+                    if (ServerStatus == ServerConnectStatus.Disconnect)
+                    {
+                        Thread.Sleep(2000);
+                        continue;
+                    }
+
+                    if (FIFOListWebSocketPublicTradesMessage.IsEmpty)
+                    {
+                        Thread.Sleep(1);
+                        continue;
+                    }
+
+                    FIFOListWebSocketPublicTradesMessage.TryDequeue(out string message);
+
+                    if (message == null)
+                    {
+                        continue;
+                    }
+
+                    if (message.Contains("\"m\":\"trades\""))
+                    {
+                        UpdateTrade(message);
+                    }
+
+                }
+                catch (Exception exception)
+                {
+                    Thread.Sleep(5000);
+                    SendLogMessage(exception.ToString(), LogMessageType.Error);
+                }
+            }
+        }
+
 
         private void PrivateMessageReader()
         {
@@ -884,51 +935,73 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
 
         private ConcurrentQueue<string> FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
-        private ConcurrentQueue<string> FIFOListWebSocketPublicMessage = new ConcurrentQueue<string>();
-
-        private List<WebSocket> _webSocketPublic = new List<WebSocket>();
+        private ConcurrentQueue<string> FIFOListWebSocketPublicMarketDepthsMessage = new ConcurrentQueue<string>();
+        private ConcurrentQueue<string> FIFOListWebSocketPublicTradesMessage = new ConcurrentQueue<string>();
+        private List<WebSocket> _webSocketPublicTrades = new List<WebSocket>();
+        private List<WebSocket> _webSocketPublicMarketDepths = new List<WebSocket>();
 
         private WebSocket _webSocketPrivate;
-        private const string _webSocketUrl = "wss://ascendex.com/1/api/pro/v1/stream";
+
+        private string _webSocketUrl = "wss://ascendex.com/1/api/pro/v1/stream";
 
 
-        private void CreatePublicWebSocketConnect()
+        private void CreatePublicWebSocketMarketDepthsConnect()
         {
             try
             {
-                if (FIFOListWebSocketPublicMessage == null)
+                if (FIFOListWebSocketPublicMarketDepthsMessage == null)
                 {
-                    FIFOListWebSocketPublicMessage = new ConcurrentQueue<string>();
+                    FIFOListWebSocketPublicMarketDepthsMessage = new ConcurrentQueue<string>();
                 }
 
-                _webSocketPublic.Add(CreateNewPublicSocket());
+                _webSocketPublicMarketDepths.Add(CreateNewPublicMarketDepthsSocket());
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                SendLogMessage($"{ex.Message} {ex.StackTrace}", LogMessageType.Error);
+                SendLogMessage($"{exception.Message} {exception.StackTrace}", LogMessageType.Error);
             }
         }
 
-
-        private WebSocket CreateNewPublicSocket()
+        private  int _webSocketConnectAttempts = 0;
+        private DateTime _lastWebSocketConnectTime = DateTime.MinValue;
+        private static readonly int _minReconnectIntervalSec = 10;
+        private WebSocket CreateNewPublicMarketDepthsSocket()
         {
             try
             {
-                WebSocket webSocketPublicNew = new WebSocket(_webSocketUrl);
+               Thread.Sleep(2000);
+
+                DateTime now = DateTime.UtcNow;
+                double secondsSinceLastConnect = (now - _lastWebSocketConnectTime).TotalSeconds;
+
+                if (secondsSinceLastConnect < _minReconnectIntervalSec)
+                {
+                    double waitTime = _minReconnectIntervalSec - secondsSinceLastConnect;
+                    SendLogMessage($"⏳ Задержка перед подключением к MarketDepths WebSocket: {waitTime} сек.", LogMessageType.System);
+                    Thread.Sleep((int)(waitTime * 1000));
+                }
+
+                _webSocketConnectAttempts++;
+                _lastWebSocketConnectTime = DateTime.UtcNow;
+
+                SendLogMessage($"🔌 Попытка подключения к WebSocket (MarketDepths) #{_webSocketConnectAttempts} в {_lastWebSocketConnectTime}", LogMessageType.System);
+
+
+                WebSocket webSocketPublicMarketDepthsNew = new WebSocket(_webSocketUrl);
 
                 //if (_myProxy != null)
                 //{
                 //    webSocketPublicNew.SetProxy(_myProxy);
                 //}
 
-                webSocketPublicNew.EmitOnPing = true;
-                webSocketPublicNew.OnOpen += WebSocketPublicNew_OnOpen;
-                webSocketPublicNew.OnClose += WebSocketPublicNew_OnClose;
-                webSocketPublicNew.OnMessage += WebSocketPublicNew_OnMessage;
-                webSocketPublicNew.OnError += WebSocketPublicNew_OnError;
-                webSocketPublicNew.Connect();
+                webSocketPublicMarketDepthsNew.EmitOnPing = true;
+                webSocketPublicMarketDepthsNew.OnOpen += WebSocketPublicMarketDepthsNew_OnOpen;
+                webSocketPublicMarketDepthsNew.OnClose += WebSocketPublicMarketDepthsNew_OnClose;
+                webSocketPublicMarketDepthsNew.OnMessage += WebSocketPublicMarketDepthsNew_OnMessage;
+                webSocketPublicMarketDepthsNew.OnError += WebSocketPublicMarketDepthsNew_OnError;
+                webSocketPublicMarketDepthsNew.Connect();
 
-                return webSocketPublicNew;
+                return webSocketPublicMarketDepthsNew;
             }
             catch (Exception exception)
             {
@@ -938,10 +1011,156 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
 
+        private void CreatePublicWebSocketTradesConnect()
+        {
+            try
+            {
+                if (FIFOListWebSocketPublicTradesMessage == null)
+                {
+                    FIFOListWebSocketPublicTradesMessage = new ConcurrentQueue<string>();
+                }
+
+                _webSocketPublicTrades.Add(CreateNewPublicTradesSocket());
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage($"{exception.Message} {exception.StackTrace}", LogMessageType.Error);
+            }
+        }
+
+        private WebSocket CreateNewPublicTradesSocket()
+        {
+            try
+            {
+                Thread.Sleep(2000);
+                
+                if (_webSocketPublicTrades.Count >= 5)
+                {
+                    SendLogMessage("❌ Превышен лимит WebSocket Trades: не создаём новое соединение.", LogMessageType.Error);
+                    return null;
+                }
+               
+
+                DateTime now = DateTime.UtcNow;
+                double secondsSinceLastConnect = (now - _lastWebSocketConnectTime).TotalSeconds;
+
+                if (secondsSinceLastConnect < _minReconnectIntervalSec)
+                {
+                    double waitTime = _minReconnectIntervalSec - secondsSinceLastConnect;
+                    SendLogMessage($"⏳ Задержка перед подключением к Trades WebSocket: {waitTime} сек.", LogMessageType.System);
+                    Thread.Sleep((int)(waitTime * 1000));
+                }
+
+                _webSocketConnectAttempts++;
+                _lastWebSocketConnectTime = DateTime.UtcNow;
+
+                SendLogMessage($"🔌 Попытка подключения к WebSocket (Trades) #{_webSocketConnectAttempts} в {_lastWebSocketConnectTime}", LogMessageType.System);
+
+
+                WebSocket webSocketPublicTradesNew = new WebSocket(_webSocketUrl);
+
+                webSocketPublicTradesNew.EmitOnPing = true;
+                webSocketPublicTradesNew.OnOpen += WebSocketPublicTradesNew_OnOpen;
+                webSocketPublicTradesNew.OnClose += WebSocketPublicTradesNew_OnClose;
+                webSocketPublicTradesNew.OnMessage += WebSocketPublicTradesNew_OnMessage;
+                webSocketPublicTradesNew.OnError += WebSocketPublicTradesNew_OnError;
+                webSocketPublicTradesNew.Connect();
+
+                return webSocketPublicTradesNew;
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                return null;
+            }
+        }
+
+
+        private void WebSocketPublicTradesNew_OnError(object sender, ErrorEventArgs e)
+        {
+            try
+            {
+                if (e.Exception != null)
+                {
+                    SendLogMessage($"AscendexSpot WebSocket Trades Error: {e.Exception}", LogMessageType.Error);
+                }
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage("AscendexSpot Data socket Trades exception: " + exception.ToString(), LogMessageType.Error);
+            }
+        }
+
+        private void WebSocketPublicTradesNew_OnMessage(object sender, MessageEventArgs e)
+        {
+            try
+            {
+                if (ServerStatus == ServerConnectStatus.Disconnect
+                    || e?.Data == null
+                    || string.IsNullOrEmpty(e.Data))
+                {
+                    return;
+                }
+
+                if (FIFOListWebSocketPublicTradesMessage == null)
+                {
+                    return;
+                }
+
+                if (e.Data.Contains("pong"))
+                { // pong message
+                    return;
+                }
+
+                if (e.Data.Contains("hb"))
+                { // heartbeating
+                    return;
+                }
+
+                FIFOListWebSocketPublicTradesMessage?.Enqueue(e.Data);
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
+
+        private void WebSocketPublicTradesNew_OnClose(object sender, CloseEventArgs e)
+        {
+            try
+            {
+                Disconnect();
+
+                SendLogMessage($"AscendexSpot Public Trades WebSocket closed by AscendexSpot. Code: {e.Code}", LogMessageType.Error);
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
+
+        private void WebSocketPublicTradesNew_OnOpen(object sender, EventArgs e)
+        {
+            try
+            {
+                CheckActivationSockets();
+
+                SendLogMessage("WebSocket public Trades AscendexSpot open.", LogMessageType.System);
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
+
+
+
         private void CreatePrivateWebSocketConnect()
         {
             try
             {
+                Thread.Sleep(2000);
+
                 if (_webSocketPrivate != null)
                 {
                     return;
@@ -969,24 +1188,24 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
         private void DeleteWebSocketConnection()
         {
-            if (_webSocketPublic != null)
+            if (_webSocketPublicMarketDepths != null)
             {
                 try
                 {
-                    for (int i = 0; i < _webSocketPublic.Count; i++)
+                    for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
                     {
-                        WebSocket webSocketPublic = _webSocketPublic[i];
+                        WebSocket webSocketPublicMarketDepthsNew = _webSocketPublicMarketDepths[i];
 
-                        webSocketPublic.OnOpen -= WebSocketPublicNew_OnOpen;
-                        webSocketPublic.OnClose -= WebSocketPublicNew_OnClose;
-                        webSocketPublic.OnMessage -= WebSocketPublicNew_OnMessage;
-                        webSocketPublic.OnError -= WebSocketPublicNew_OnError;
+                        webSocketPublicMarketDepthsNew.OnOpen -= WebSocketPublicMarketDepthsNew_OnOpen;
+                        webSocketPublicMarketDepthsNew.OnClose -= WebSocketPublicMarketDepthsNew_OnClose;
+                        webSocketPublicMarketDepthsNew.OnMessage -= WebSocketPublicMarketDepthsNew_OnMessage;
+                        webSocketPublicMarketDepthsNew.OnError -= WebSocketPublicMarketDepthsNew_OnError;
 
-                        if (webSocketPublic.ReadyState == WebSocketState.Open)
+                        if (webSocketPublicMarketDepthsNew.ReadyState == WebSocketState.Open)
                         {
-                            webSocketPublic.CloseAsync();
+                            webSocketPublicMarketDepthsNew.CloseAsync();
                         }
-                        webSocketPublic = null;
+                        webSocketPublicMarketDepthsNew = null;
                     }
                 }
                 catch
@@ -994,9 +1213,35 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     // ignore
                 }
 
-                _webSocketPublic.Clear();
+                _webSocketPublicMarketDepths.Clear();
             }
+            if (_webSocketPublicTrades != null)
+            {
+                try
+                {
+                    for (int i = 0; i < _webSocketPublicTrades.Count; i++)
+                    {
+                        WebSocket webSocketPublicTradesNew = _webSocketPublicTrades[i];
 
+                        webSocketPublicTradesNew.OnOpen -= WebSocketPublicTradesNew_OnOpen;
+                        webSocketPublicTradesNew.OnClose -= WebSocketPublicTradesNew_OnClose;
+                        webSocketPublicTradesNew.OnMessage -= WebSocketPublicTradesNew_OnMessage;
+                        webSocketPublicTradesNew.OnError -= WebSocketPublicTradesNew_OnError;
+
+                        if (webSocketPublicTradesNew.ReadyState == WebSocketState.Open)
+                        {
+                            webSocketPublicTradesNew.CloseAsync();
+                        }
+                        webSocketPublicTradesNew = null;
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                _webSocketPublicTrades.Clear();
+            }
 
             if (_webSocketPrivate != null)
             {
@@ -1072,32 +1317,36 @@ namespace OsEngine.Market.Servers.AscendexSpot
         //    _webSocketPublic[0].Send("${\"op\":\"sub\",\"ch\":\"trades:{BTC/USDT}\"}"); 
         //    _webSocketPublic[0].Send("${\"op\":\"sub\",\"ch\":\"depth:{BTC/USDT}\"}");
         //}
-        private void WebSocketPublicNew_OnOpen(object sender, EventArgs e)
+        private void WebSocketPublicMarketDepthsNew_OnOpen(object sender, EventArgs e)
         {
             try
             {
                 if (ServerStatus == ServerConnectStatus.Disconnect)
                 {
-                    SendLogMessage("AscendexSpot WebSocket Public connection open", LogMessageType.System);
-                    CheckSocketsActivate();
+                    CheckActivationSockets();
+                    SendLogMessage("AscendexSpot WebSocket public MarketDepths connection open", LogMessageType.System);
+
                 }
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                SendLogMessage(ex.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
         }
-        private void WebSocketPublicNew_OnClose(object sender, CloseEventArgs e)
+        private void WebSocketPublicMarketDepthsNew_OnClose(object sender, CloseEventArgs e)
         {
-            if (ServerStatus != ServerConnectStatus.Disconnect)
+            try
             {
-                SendLogMessage($"Connection Closed by AscendexSpot. {e.Code} {e.Reason}. WebSocket Public Closed Event", LogMessageType.Error);
-                ServerStatus = ServerConnectStatus.Disconnect;
-                DisconnectEvent();
-            }
+                Disconnect();
 
+                SendLogMessage($"Public MarketDeptns WebSocket closed by AscendexSpot. Code:{e.Code}", LogMessageType.Error);
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
         }
-        private void WebSocketPublicNew_OnMessage(object sender, MessageEventArgs e)
+        private void WebSocketPublicMarketDepthsNew_OnMessage(object sender, MessageEventArgs e)
         {
 
             try
@@ -1109,7 +1358,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
-                if (FIFOListWebSocketPublicMessage == null)
+                if (FIFOListWebSocketPublicMarketDepthsMessage == null)
                 {
                     return;
                 }
@@ -1117,9 +1366,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     if (e.Data.Contains("ping"))
                     {
-                        for (int i = 0; i < _webSocketPublic.Count; i++)
+                        for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
                         {
-                            _webSocketPublic[i].Send("{\"op\":\"pong\"}");
+                            _webSocketPublicMarketDepths[i].Send("{\"op\":\"pong\"}");
 
                         }
 
@@ -1129,7 +1378,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (e.IsText)
                 {
-                    FIFOListWebSocketPublicMessage.Enqueue(e.Data);
+                    FIFOListWebSocketPublicMarketDepthsMessage.Enqueue(e.Data);
                 }
 
             }
@@ -1138,7 +1387,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage(error.ToString(), LogMessageType.Error);
             }
         }
-        private void WebSocketPublicNew_OnError(object sender, ErrorEventArgs e)///переделать как в битфайнекс
+        private void WebSocketPublicMarketDepthsNew_OnError(object sender, ErrorEventArgs e)///переделать как в битфайнекс
         {
             if (e.Exception != null)
             {
@@ -1158,15 +1407,15 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 if (ServerStatus == ServerConnectStatus.Disconnect)
                 {
                     GenerateAuthenticate();
-                    CheckSocketsActivate();
+                    CheckActivationSockets();
 
                     SendLogMessage("Connection to private data is Open", LogMessageType.System);
 
                 }
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                SendLogMessage(ex.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
 
         }
@@ -1174,12 +1423,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                if (ServerStatus != ServerConnectStatus.Disconnect)
-                {
-                    SendLogMessage($"Connection Closed by AscendexSpot. {e.Code} {e.Reason}. WebSocket Private Closed Event", LogMessageType.Error);
-                    ServerStatus = ServerConnectStatus.Disconnect;
-                    DisconnectEvent();
-                }
+                Disconnect();
+
+                SendLogMessage($"Connection Closed by AscendexSpot. {e.Code} {e.Reason}. WebSocket Private Closed Event", LogMessageType.Error);
             }
             catch (Exception exception)
             {
@@ -1268,13 +1514,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private string _socketActivateLocker = "socketActivateLocker";
         private List<string> _subscribedSecurities = new List<string>();
-        private void CheckSocketsActivate()
+        private void CheckActivationSockets()
         {
             lock (_socketActivateLocker)
             {
                 try
                 {
-
                     if (_webSocketPrivate == null
                        || _webSocketPrivate?.ReadyState != WebSocketState.Open)
                     {
@@ -1282,24 +1527,36 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         return;
                     }
 
-                    //if (_subscribedSecurities.Count > 0)
-                    //{
-                        if (_webSocketPublic.Count == 0
-                           /* || _webSocketPublic == null*/)
-                        {
-                            Disconnect();
-                            return;
-                        }
+                    if (_webSocketPublicMarketDepths.Count == 0)
+                    {
+                        Disconnect();
+                        return;
+                    }
 
-                        WebSocket webSocketPublic = _webSocketPublic[0];
+                    WebSocket webSocketPublicMarketDepths = _webSocketPublicMarketDepths[0];
 
-                        if (webSocketPublic == null
-                            || webSocketPublic?.ReadyState != WebSocketState.Open)
-                        {
-                            Disconnect();
-                            return;
-                        }
-                  //  }
+
+                    if (webSocketPublicMarketDepths == null
+                        || webSocketPublicMarketDepths?.ReadyState != WebSocketState.Open)
+                    {
+                        Disconnect();
+                        return;
+                    }
+
+                    if (_webSocketPublicTrades.Count == 0)
+                    {
+                        Disconnect();
+                        return;
+                    }
+
+                    WebSocket webSocketPublicTrades = _webSocketPublicTrades[0];
+
+                    if (webSocketPublicTrades == null
+                        || webSocketPublicTrades?.ReadyState != WebSocketState.Open)
+                    {
+                        Disconnect();
+                        return;
+                    }
 
                     if (ServerStatus != ServerConnectStatus.Connect)
                     {
@@ -1309,9 +1566,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     SendLogMessage("All sockets activated.", LogMessageType.System);
                 }
-                catch (Exception ex)
+                catch (Exception exception)
                 {
-                    SendLogMessage(ex.Message, LogMessageType.Error);
+                    SendLogMessage(exception.Message, LogMessageType.Error);
                 }
             }
         }
@@ -1331,27 +1588,45 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         continue;
                     }
-                    for (int i = 0; i < _webSocketPublic.Count; i++)
+
+                    for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
                     {
-                        WebSocket webSocketPublic = _webSocketPublic[i];
-                        if (webSocketPublic != null
-                        && (webSocketPublic.ReadyState == WebSocketState.Open
-                  /*  || webSocketPublic.ReadyState == WebSocketState.Connecting)*/))
+                        WebSocket webSocketPublicMarketDepths = _webSocketPublicMarketDepths[i];
+                        if (webSocketPublicMarketDepths != null
+                            && webSocketPublicMarketDepths?.ReadyState == WebSocketState.Open)
                         {
 
-                            webSocketPublic.Send("{\"op\":\"pong\"}");
+                            webSocketPublicMarketDepths?.Send("{\"op\":\"pong\"}");
                         }
                         else
                         {
                             Disconnect();
                         }
                     }
+
+                    for (int i = 0; i < _webSocketPublicTrades.Count; i++)
+                    {
+                        WebSocket webSocketPublicTrades = _webSocketPublicTrades[i];
+                        if (webSocketPublicTrades != null
+                            && webSocketPublicTrades?.ReadyState == WebSocketState.Open)
+                        {
+
+                            webSocketPublicTrades?.Send("{\"op\":\"pong\"}");
+                        }
+                        else
+                        {
+                            Disconnect();
+                        }
+
+                    }
+
+
                     if (_webSocketPrivate != null
                         && (_webSocketPrivate.ReadyState == WebSocketState.Open
                     || _webSocketPrivate.ReadyState == WebSocketState.Connecting))
                     {
 
-                        _webSocketPrivate.Send("{\"op\":\"pong\"}");
+                        _webSocketPrivate?.Send("{\"op\":\"pong\"}");
                     }
                     else
                     {
@@ -1414,66 +1689,85 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 _subscribedSecurities.Add(security.Name);
 
-                if (_webSocketPublic == null
-                    ||_webSocketPublic.Count == 0) 
-                     
+
+                if (_webSocketPublicMarketDepths.Count == 0
+                    || _webSocketPublicTrades.Count == 0)
                 {
-                    SendLogMessage("Нет доступных WebSocket для подписки", LogMessageType.Error);
                     return;
                 }
 
-                WebSocket webSocketPublic = _webSocketPublic[_webSocketPublic.Count - 1];// Берем последний сокет в списке
+                WebSocket webSocketPublicMarketDepths = _webSocketPublicMarketDepths[_webSocketPublicMarketDepths.Count - 1];
+                WebSocket webSocketPublicTrades = _webSocketPublicTrades[_webSocketPublicTrades.Count - 1];
+
 
                 int MaxWebSocketCount = 5; // максимум подписок на один сокет
                 int MaxSubsPerSocket = 60;// Максимум подписок на один сокет
 
 
-
-                //if (webSocketPublic.ReadyState == WebSocketState.Open
-                //    && _subscribedSecurities.Count != 0
-                //    && _subscribedSecurities.Count % MaxSubsPerSocket == 0)
-                if (_subscribedSecurities.Count % MaxSubsPerSocket == 0)
+                if (webSocketPublicMarketDepths.ReadyState == WebSocketState.Open
+                    && webSocketPublicTrades.ReadyState == WebSocketState.Open
+                    && _subscribedSecurities.Count != 0
+                    && _subscribedSecurities.Count % MaxSubsPerSocket == 0)
                 {
-                    if (_webSocketPublic.Count >= MaxWebSocketCount)
-                    {     
-                        SendLogMessage("Превышен лимит WebSocket-соединений. Подписка будет отложена.", LogMessageType.Error);
-                        return;
-                    }
+                    //{
+                    //    if (_webSocketPublic.Count >= MaxWebSocketCount)
+                    //    {
+                    //        SendLogMessage("Превышен лимит WebSocket-соединений. Подписка будет отложена.", LogMessageType.Error);
+                    //        return;
+                    //    }
+                    // creating a new socket
+                    WebSocket newSocketMarketDepths = CreateNewPublicMarketDepthsSocket();
+                    WebSocket newSocketTrades = CreateNewPublicTradesSocket();
+
+                    DateTime timeEndMarketDepths = DateTime.Now.AddSeconds(10);
+                    while (newSocketMarketDepths.ReadyState != WebSocketState.Open)
                     {
-                        WebSocket newSocket = CreateNewPublicSocket();
+                        Thread.Sleep(500);
 
-                        DateTime timeEndPublicSocket = DateTime.Now.AddSeconds(10);
-                        while (newSocket.ReadyState != WebSocketState.Open)
+                        if (timeEndMarketDepths < DateTime.Now)
                         {
-                            Thread.Sleep(500);
-
-                            if (DateTime.Now > timeEndPublicSocket)
-                            {
-                                SendLogMessage("WebSocket не открылся вовремя", LogMessageType.Error);
-                                break;
-                            }
-                        }
-
-                        if (newSocket.ReadyState == WebSocketState.Open)//надо условие или нет
-                        {
-                            _webSocketPublic.Add(newSocket);
-                            webSocketPublic = newSocket;
+                            break;
                         }
                     }
 
-                    if (webSocketPublic != null && webSocketPublic.ReadyState == WebSocketState.Open)
+                    if (newSocketMarketDepths.ReadyState == WebSocketState.Open)
                     {
-                        webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
-                        webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{security.Name}\"}}");
-                        webSocketPublic.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
-
+                        _webSocketPublicMarketDepths.Add(newSocketMarketDepths);
+                        webSocketPublicMarketDepths = newSocketMarketDepths;
                     }
 
-                    if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open)
+                    DateTime timeEndTrades = DateTime.Now.AddSeconds(10);
+                    while (newSocketTrades.ReadyState != WebSocketState.Open)
                     {
-                        _webSocketPrivate.Send("{\"op\":\"sub\",\"ch\":\"order:cash\"}");
+                        Thread.Sleep(500);
 
+                        if (timeEndTrades < DateTime.Now)
+                        {
+                            break;
+                        }
                     }
+
+                    if (newSocketTrades.ReadyState == WebSocketState.Open)
+                    {
+                        _webSocketPublicTrades.Add(newSocketTrades);
+                        webSocketPublicTrades = newSocketTrades;
+                    }
+                }
+
+                if (webSocketPublicMarketDepths != null
+                    && webSocketPublicTrades != null)
+                {
+
+                    webSocketPublicMarketDepths.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
+                    webSocketPublicMarketDepths.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{security.Name}\"}}");
+                    webSocketPublicTrades.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
+
+                }
+
+                if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open)
+                {
+                    _webSocketPrivate.Send("{\"op\":\"sub\",\"ch\":\"order:cash\"}");
+
                 }
             }
             catch (Exception exception)
@@ -1481,52 +1775,81 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
         }
+ 
+        // Метод отписки от всех подписок
         private void UnsubscribeFromAllWebSockets()
         {
             try
             {
-
+                // Проверка статуса подключения
                 if (ServerStatus == ServerConnectStatus.Disconnect)
                 {
                     return;
                 }
 
-                if (_webSocketPublic != null && _webSocketPublic.Count != 0)
+                // Отписка от depth по всем публичным WebSocket'ам стакана
+                for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
                 {
-                    for (int i = 0; i < _webSocketPublic.Count; i++)
-                    {
-                        WebSocket webSocketPublic = _webSocketPublic[i];
+                    WebSocket webSocketPublicMarketDepths = _webSocketPublicMarketDepths[i];
 
+                    // Проверяем, что сокет открыт
+                    if (webSocketPublicMarketDepths != null && webSocketPublicMarketDepths.ReadyState == WebSocketState.Open)
+                    {
                         try
                         {
-                            // Проверяем, что сокет открыт
-                            if (webSocketPublic != null && webSocketPublic.ReadyState == WebSocketState.Open)
+                            // Если есть подписанные инструменты
+                            if (_subscribedSecurities != null && _subscribedSecurities.Count > 0)
                             {
-                                // Если есть подписанные инструменты
-                                if (_subscribedSecurities != null && _subscribedSecurities.Count > 0)
+                                for (int j = 0; j < _subscribedSecurities.Count; j++)
                                 {
-                                    for (int j = 0; j < _subscribedSecurities.Count; j++)
-                                    {
-                                        string symbol = _subscribedSecurities[j];
+                                    string symbol = _subscribedSecurities[j];
 
-                                        // Отписка от трейдов
-                                        webSocketPublic.Send($"{{\"op\":\"unsub\",\"ch\":\"trades:{symbol}\"}}");
-
-                                        // Отписка от стакана
-                                        webSocketPublic.Send($"{{\"op\":\"unsub\",\"ch\":\"depth:{symbol}\"}}");
-                                    }
+                                    // Отписка от стакана
+                                    webSocketPublicMarketDepths.Send($"{{\"op\":\"unsub\",\"ch\":\"depth:{symbol}\"}}");
                                 }
                             }
                         }
-                        catch (Exception ex)
+                        catch (Exception exception)
                         {
-                            // Логируем ошибки, связанные с конкретным WebSocket
-                            SendLogMessage($"Unsubscribe error on public socket: {ex.Message} {ex.StackTrace}", LogMessageType.Error);
+                            // Логируем ошибку конкретного сокета
+                            SendLogMessage($"Unsubscribe error on public depth socket: {exception.Message} {exception.StackTrace}", LogMessageType.Error);
                         }
                     }
                 }
 
-                // Отписываемся от ордеров (private socket) — только один раз, вне цикла
+                // Отписка от trades по всем публичным WebSocket'ам сделок
+                for (int i = 0; i < _webSocketPublicTrades.Count; i++)
+                {
+                    WebSocket webSocketPublicTrades = _webSocketPublicTrades[i];
+
+                    // Проверяем, что сокет открыт
+                    if (webSocketPublicTrades != null && webSocketPublicTrades.ReadyState == WebSocketState.Open)
+                    {
+                        try
+                        {
+                            // Если есть подписанные инструменты
+                            if (_subscribedSecurities != null && _subscribedSecurities.Count > 0)
+                            {
+                                for (int j = 0; j < _subscribedSecurities.Count; j++)
+                                {
+                                    string symbol = _subscribedSecurities[j];
+
+                                    // Отписка от сделок
+                                    webSocketPublicTrades.Send($"{{\"op\":\"unsub\",\"ch\":\"trades:{symbol}\"}}");
+                                }
+                            }
+
+                            // Очищаем словарь сделок
+                           // _tradeDictionary.Clear();
+                        }
+                        catch (Exception exception)
+                        {
+                            SendLogMessage($"Unsubscribe error on public trades socket: {exception.Message} {exception.StackTrace}", LogMessageType.Error);
+                        }
+                    }
+                }
+
+                // Отписка от приватных каналов (ордеры)
                 if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open)
                 {
                     try
@@ -1539,17 +1862,18 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     }
                 }
 
-                // Очищаем список подписок
+                // Очищаем список подписанных инструментов
                 _subscribedSecurities.Clear();
+
+                // Уведомляем об успешной отписке
+                SendLogMessage("All subscriptions have been successfully removed", LogMessageType.System);
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                // Логируем общую ошибку
-                SendLogMessage($"General unsubscribe error: {ex.Message} {ex.StackTrace}", LogMessageType.Error);
+                // Общая ошибка
+                SendLogMessage($"General unsubscribe error: {exception.Message} {exception.StackTrace}", LogMessageType.Error);
             }
         }
-
-
 
 
         #endregion
@@ -1730,9 +2054,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 MarketDepthEvent?.Invoke(depth.GetCopy());
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                SendLogMessage("Ошибка обновления стакана: " + ex.Message, LogMessageType.Error);
+                SendLogMessage("Ошибка обновления стакана: " + exception.Message, LogMessageType.Error);
             }
         }
 
@@ -1740,12 +2064,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
         // Метод запроса снапшота стакана
         private void RequestSnapshot(string symbol)
         {
-            WebSocket webSocketPublic = _webSocketPublic[_webSocketPublic.Count - 1];
+            WebSocket webSocketPublicMarketDepths = _webSocketPublicMarketDepths[_webSocketPublicMarketDepths.Count - 1];
 
             // Проверка, открыт ли сокет
-            if (webSocketPublic.ReadyState == WebSocketState.Open)
+            if (webSocketPublicMarketDepths.ReadyState == WebSocketState.Open)
             {
-                webSocketPublic.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{symbol}\"}}}}");
+                webSocketPublicMarketDepths.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{symbol}\"}}}}");
             }
         }
 
@@ -2315,198 +2639,220 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         public void CancelAllOrdersToSecurity(Security security)
         {
-            string accountGroup = GetAccountGroup();
-            string accountCategory = "cash";
-
-            string path = $"/{accountGroup}/api/pro/v1/{accountCategory}/order/all";
-
-            string body = $"{{" +
-                          $"\"symbol\": \"{security.Name}\"" +
-                          $"}}";
-
-
-            IRestResponse response = CreatePrivateQuery(path, body, accountGroup, accountCategory, Method.DELETE/*, _myProxy*/);
-
-            if (response == null)
+            try
             {
-                Console.WriteLine("❌ Ошибка: нет ответа от сервера.");
-                return;
-            }
+                string accountGroup = GetAccountGroup();
+                string accountCategory = "cash";
 
-            if (response.StatusCode == HttpStatusCode.OK)
-            {
-                Console.WriteLine("📩 Ответ на отмену ордера:");
-                Console.WriteLine(response.Content);
+                string path = $"/{accountGroup}/api/pro/v1/{accountCategory}/order/all";
 
-                AscendexSpotCancelOrderResponse cancelResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
+                string body = $"{{" +
+                              $"\"symbol\": \"{security.Name}\"" +
+                              $"}}";
 
-                if (cancelResult != null && cancelResult.code == "0")
+
+                IRestResponse response = CreatePrivateQuery(path, body, accountGroup, accountCategory, Method.DELETE/*, _myProxy*/);
+
+                if (response == null)
                 {
-                    Console.WriteLine($"✅ Ордера отменены: {cancelResult.data.orderId} | Статус: {cancelResult.data.status}");
+                    Console.WriteLine("❌ Ошибка: нет ответа от сервера.");
+                    return;
+                }
 
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    Console.WriteLine("📩 Ответ на отмену ордера:");
+                    Console.WriteLine(response.Content);
+
+                    AscendexSpotCancelOrderResponse cancelResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
+
+                    if (cancelResult != null && cancelResult.code == "0")
+                    {
+                        Console.WriteLine($"✅ Ордера отменены: {cancelResult.data.orderId} | Статус: {cancelResult.data.status}");
+
+                    }
+                    else
+                    {
+                        Console.WriteLine($"❌ Ошибка отмены: code={cancelResult?.code}");
+                    }
                 }
                 else
                 {
-                    Console.WriteLine($"❌ Ошибка отмены: code={cancelResult?.code}");
+                    Console.WriteLine(" Error: " + response.StatusCode);
+                    Console.WriteLine(response.Content);
                 }
             }
-            else
+            catch (Exception exception)
             {
-                Console.WriteLine(" Error: " + response.StatusCode);
-                Console.WriteLine(response.Content);
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
         }
 
         public void ChangeOrderPrice(Order order, decimal newPrice)
         {
-            return;
+            
         }
 
         public void GetAllActivOrders()
         {
-            List<Order> orders = new List<Order>();
-
-            string accountGroup = GetAccountGroup();
-            string accountCategory = "cash";
-            string path = $"/{accountGroup}/api/pro/v1/cash/order/open";
-
-            IRestResponse response = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET/*, _myProxy*/);
-
-            if (response == null)
+            try
             {
-                SendLogMessage($" {response.StatusCode}", LogMessageType.Error);
-                return;
-            }
-            if (response.StatusCode == HttpStatusCode.OK)
-            {
-                AscendexSpotOpenOrdersResponse result = JsonConvert.DeserializeObject<AscendexSpotOpenOrdersResponse>(response.Content);
+                List<Order> orders = new List<Order>();
 
-                if (result != null && result.code == "0")
+                string accountGroup = GetAccountGroup();
+                string accountCategory = "cash";
+                string path = $"/{accountGroup}/api/pro/v1/cash/order/open";
+
+                IRestResponse response = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET/*, _myProxy*/);
+
+                if (response == null)
                 {
-                    if (result.data.Count == 0)
+                    SendLogMessage($" {response.StatusCode}", LogMessageType.Error);
+                    return;
+                }
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    AscendexSpotOpenOrdersResponse result = JsonConvert.DeserializeObject<AscendexSpotOpenOrdersResponse>(response.Content);
+
+                    if (result != null && result.code == "0")
                     {
-                        // SendLogMessage($"No active orders", LogMessageType.Error);
-                        return;
+                        if (result.data.Count == 0)
+                        {
+                            // SendLogMessage($"No active orders", LogMessageType.Error);
+                            return;
+                        }
+
+                        for (int i = 0; i < result.data.Count; i++)
+                        {
+                            AscendexSpotOrderInfo order = result.data[i];
+                            Order activeOrder = new Order();
+                            activeOrder.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(order.lastExecTime));
+
+                            activeOrder.ServerType = ServerType.AscendexSpot;
+                            activeOrder.SecurityNameCode = order.symbol;
+
+                            activeOrder.NumberMarket = order.orderId;
+                            activeOrder.Side = order.side == "Buy" ? Side.Buy : Side.Sell;
+                            activeOrder.State = GetOrderState(order.status);
+
+                            activeOrder.Volume = (order.orderQty).ToDecimal();
+                            activeOrder.Price = order.price.ToDecimal();
+                            activeOrder.PortfolioNumber = "AscendexSpotPortfolio";
+
+                            orders.Add(activeOrder);
+
+                        }
                     }
-
-                    for (int i = 0; i < result.data.Count; i++)
+                    else
                     {
-                        AscendexSpotOrderInfo order = result.data[i];
-                        Order activeOrder = new Order();
-                        activeOrder.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(order.lastExecTime));
 
-                        activeOrder.ServerType = ServerType.AscendexSpot;
-                        activeOrder.SecurityNameCode = order.symbol;
-
-                        activeOrder.NumberMarket = order.orderId;
-                        activeOrder.Side = order.side == "Buy" ? Side.Buy : Side.Sell;
-                        activeOrder.State = GetOrderState(order.status);
-
-                        activeOrder.Volume = (order.orderQty).ToDecimal();
-                        activeOrder.Price = order.price.ToDecimal();
-                        activeOrder.PortfolioNumber = "AscendexSpotPortfolio";
-
-                        orders.Add(activeOrder);
-
+                        SendLogMessage($" GetOrderStatus Error: code={result?.code}, {response.Content}", LogMessageType.Error);
                     }
                 }
                 else
                 {
+                    SendLogMessage($" HTTP Error:{response.StatusCode},{response.Content}", LogMessageType.Error);
 
-                    SendLogMessage($" GetOrderStatus Error: code={result?.code}, {response.Content}", LogMessageType.Error);
+                }
+                if (orders == null
+                  || orders.Count == 0)
+                {
+                    return;
+                }
+
+                for (int i = 0; i < orders.Count; i++)
+                {
+                    MyOrderEvent?.Invoke(orders[i]);
                 }
             }
-            else
+            catch (Exception exception)
             {
-                SendLogMessage($" HTTP Error:{response.StatusCode},{response.Content}", LogMessageType.Error);
-
-            }
-            if (orders == null
-              || orders.Count == 0)
-            {
-                return;
-            }
-
-            for (int i = 0; i < orders.Count; i++)
-            {
-                MyOrderEvent?.Invoke(orders[i]);
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
         }
 
         public void GetOrderStatus(Order order)
         {
-            string accountGroup = GetAccountGroup(); // Получаем группу аккаунта
-            string accountCategory = "cash"; // Категория аккаунта
-
-            // Формируем путь запроса
-            string path = $"/{accountGroup}/api/pro/v1/cash/order/status?orderId={order.NumberMarket}";
-
-            // Выполняем запрос через CreatePrivateQuery
-            IRestResponse request = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET);
-
-            if (request == null)
+            try
             {
-                SendLogMessage("GetOrderStatus> Запрос вернул null", LogMessageType.Error);
-                return;
-            }
 
-            if (request.StatusCode == HttpStatusCode.OK)
-            {
-                // Десериализуем ответ
-                AscendexSpotQueryOrderResponse queryOrder = JsonConvert.DeserializeObject<AscendexSpotQueryOrderResponse>(request.Content);
+                string accountGroup = GetAccountGroup(); // Получаем группу аккаунта
+                string accountCategory = "cash"; // Категория аккаунта
 
+                // Формируем путь запроса
+                string path = $"/{accountGroup}/api/pro/v1/cash/order/status?orderId={order.NumberMarket}";
 
-                if (queryOrder != null && queryOrder.code != "0")
+                // Выполняем запрос через CreatePrivateQuery
+                IRestResponse request = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET);
+
+                if (request == null)
                 {
-                    SendLogMessage($"Error status order: {queryOrder.code}, message :{request.Content}", LogMessageType.Error);
+                    SendLogMessage("GetOrderStatus> Запрос вернул null", LogMessageType.Error);
                     return;
                 }
-                //if (response != null && response.code == "0" && response.data != null && response.data.Count > 0)
-                //{
-                //    for (int i = 0; i < response.data.Count; i++)
-                //    {
-                //        AscendexSpotQueryOrderMessage queryOrder = response.data[i];
 
-                // Лог текущего ордера
-                SendLogMessage($"Order Status: {queryOrder.data.orderId} | Статус: {queryOrder.data.status}", LogMessageType.Error);
-
-                // Обновляем статус текущего локального ордера
-                order.State = GetOrderState(queryOrder.data.status);
-                MyOrderEvent?.Invoke(order);
-
-                // Если есть исполнение
-                if (order.State == OrderStateType.Done || order.State == OrderStateType.Partial)
+                if (request.StatusCode == HttpStatusCode.OK)
                 {
-                    MyTrade myTrade = new MyTrade();
-
-                    myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(queryOrder.data.lastExecTime));
-                    myTrade.SecurityNameCode = queryOrder.data.symbol;
-                    myTrade.NumberOrderParent = queryOrder.data.orderId;
-                    myTrade.Price = queryOrder.data.price.ToDecimal();
-                    myTrade.NumberTrade = queryOrder.data.seqNum;
-                    myTrade.Volume = queryOrder.data.cumFilledQty.ToDecimal();
-                    myTrade.Side = (queryOrder.data.side == "Buy") ? Side.Buy : Side.Sell;
+                    // Десериализуем ответ
+                    AscendexSpotQueryOrderResponse queryOrder = JsonConvert.DeserializeObject<AscendexSpotQueryOrderResponse>(request.Content);
 
 
-                    string commissionSecName = queryOrder.data.cumFee;
+                    if (queryOrder != null && queryOrder.code != "0")
+                    {
+                        SendLogMessage($"Error status order: {queryOrder.code}, message :{request.Content}", LogMessageType.Error);
+                        return;
+                    }
+                    //if (response != null && response.code == "0" && response.data != null && response.data.Count > 0)
+                    //{
+                    //    for (int i = 0; i < response.data.Count; i++)
+                    //    {
+                    //        AscendexSpotQueryOrderMessage queryOrder = response.data[i];
+
+                    // Лог текущего ордера
+                    SendLogMessage($"Order Status: {queryOrder.data.orderId} | Статус: {queryOrder.data.status}", LogMessageType.Error);
+
+                    // Обновляем статус текущего локального ордера
+                    order.State = GetOrderState(queryOrder.data.status);
+                    MyOrderEvent?.Invoke(order);
+
+                    // Если есть исполнение
+                    if (order.State == OrderStateType.Done || order.State == OrderStateType.Partial)
+                    {
+                        MyTrade myTrade = new MyTrade();
+
+                        myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(queryOrder.data.lastExecTime));
+                        myTrade.SecurityNameCode = queryOrder.data.symbol;
+                        myTrade.NumberOrderParent = queryOrder.data.orderId;
+                        myTrade.Price = queryOrder.data.price.ToDecimal();
+                        myTrade.NumberTrade = queryOrder.data.seqNum;
+                        myTrade.Volume = queryOrder.data.cumFilledQty.ToDecimal();
+                        myTrade.Side = (queryOrder.data.side == "Buy") ? Side.Buy : Side.Sell;
 
 
-                    MyTradeEvent?.Invoke(myTrade);
+                        string commissionSecName = queryOrder.data.cumFee;
 
-                    SendLogMessage(myTrade.ToString(), LogMessageType.Trade);
+
+                        MyTradeEvent?.Invoke(myTrade);
+
+                        SendLogMessage(myTrade.ToString(), LogMessageType.Trade);
+                    }
+                    //  }
+                    //}
+                    else
+                    {
+
+                        SendLogMessage($"GetOrderStatus Error: code={queryOrder.code}, raw={request.Content}", LogMessageType.Error);
+                    }
                 }
-                //  }
-                //}
                 else
                 {
-                    // Лог ошибки, если структура ответа некорректна
-                    SendLogMessage($"GetOrderStatus Error: code={queryOrder.code}, raw={request.Content}", LogMessageType.Error);
+
+                    SendLogMessage($"HTTP Error: {request.StatusCode}, content={request.Content}", LogMessageType.Error);
                 }
             }
-            else
+            catch (Exception exception)
             {
-                // Лог ошибки HTTP
-                SendLogMessage($"HTTP Error: {request.StatusCode}, content={request.Content}", LogMessageType.Error);
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
         }
 
@@ -2626,9 +2972,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 return response;
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                SendLogMessage(ex.Message, LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
                 return null;
             }
         }
@@ -2662,8 +3008,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private string BuildPrehashMessage(string fullPath, long timestamp)
         {
             string pathOnly = fullPath.Contains("?")
-       ? fullPath.Substring(0, fullPath.IndexOf("?", StringComparison.Ordinal))
-       : fullPath;
+        ? fullPath.Substring(0, fullPath.IndexOf("?", StringComparison.Ordinal))
+        : fullPath;
 
 
             string prehashPath;
@@ -2707,9 +3053,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 return client.Execute(request);
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                SendLogMessage(ex.Message, LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
                 return null;
             }
         }
