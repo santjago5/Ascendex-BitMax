@@ -6,6 +6,7 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -229,7 +230,8 @@ namespace OsEngine.Entity.WebSocketOsEngine
                                 (message.Contains("ping") 
                                  || message.Contains("Ping")))
                             {
-                                await Send("pong");
+                                  await Send("pong");
+                               
                             }
                             else
                             {

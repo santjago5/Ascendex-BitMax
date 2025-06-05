@@ -16,17 +16,17 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
     }
 
 
-    class AscendexSpotCancelOrderResponse
-    {
-        public string code { get; set; }
-        public AscendexSpotCancelOrderData data { get; set; }
-    }
+    //class AscendexSpotCancelOrderResponse
+    //{
+    //    public string code { get; set; }
+    //    public AscendexSpotCancelOrderData data { get; set; }
+    //}
 
-    class AscendexSpotCancelOrderData
-    {
-        public string orderId { get; set; }
-        public string status { get; set; } // Например: "Canceled"
-    }
+    //class AscendexSpotCancelOrderData
+    //{
+    //    public string orderId { get; set; }
+    //    public string status { get; set; } // Например: "Canceled"
+    //}
 
 
 }

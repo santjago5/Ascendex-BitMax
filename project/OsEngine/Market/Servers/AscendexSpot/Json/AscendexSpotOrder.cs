@@ -52,54 +52,54 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public List<AscendexSpotOrderInfo> data { get; set; }
     }
 
-    public class AscendexSpotOrderErrorResponse
-    {
-        public string code { get; set; }         // Код ошибки / Error code
-        public string message { get; set; }      // Сообщение об ошибке / Error message
-        public string reason { get; set; }       // Причина / Reason
-        public string accountId { get; set; }    // ID аккаунта / Account ID
-        public string ac { get; set; }           // Тип аккаунта / Account type
-    }
+    //public class AscendexSpotOrderErrorResponse
+    //{
+    //    public string code { get; set; }         // Код ошибки / Error code
+    //    public string message { get; set; }      // Сообщение об ошибке / Error message
+    //    public string reason { get; set; }       // Причина / Reason
+    //    public string accountId { get; set; }    // ID аккаунта / Account ID
+    //    public string ac { get; set; }           // Тип аккаунта / Account type
+    //}
 
     // Класс для успешного ответа отмены ордера
-    public class CancelOrderSuccessResponse
-    {
-        public int code { get; set; }
-        public CancelOrderData data { get; set; }
-    }
+  
 
-    public class CancelOrderData
-    {
-        public string accountId { get; set; }
-        public string ac { get; set; }
-        public string action { get; set; }
-        public string status { get; set; }
-        public CancelOrderInfo info { get; set; }
-    }
-
-    public class CancelOrderInfo
-    {
-        public string id { get; set; }
-        public string orderId { get; set; }
-        public string orderType { get; set; }
-        public string symbol { get; set; }
-        public long timestamp { get; set; }
-    }
-
+  
+  
     // Класс для ошибки отмены ордера
-    public class CancelOrderErrorResponse
+    public class AscendexSpotCancelOrderResponse
     {
-        public int code { get; set; }
+        public string code { get; set; }
         public string accountId { get; set; }
         public string ac { get; set; }
         public string action { get; set; }
         public string status { get; set; }
         public string message { get; set; }
         public string reason { get; set; }
-        public CancelOrderErrorInfo info { get; set; }
+        public AscendexSpotCancelOrderErrorInfo info { get; set; }
+        public AscendexSpotCancelOrderData data { get; set; }
     }
 
-    public class CancelOrderErrorInfo
+    public class AscendexSpotCancelOrderInfo
+    {
+        public string id { get; set; }
+        public string orderId { get; set; }
+        public string orderType { get; set; }
+        public string symbol { get; set; }
+        public string timestamp { get; set; }
+    }
+
+    public class AscendexSpotCancelOrderData
+    {
+        public string accountId { get; set; }
+        public string ac { get; set; }
+        public string action { get; set; }
+        public string status { get; set; }
+        public AscendexSpotCancelOrderInfo info { get; set; }
+    }
+
+
+    public class AscendexSpotCancelOrderErrorInfo
     {
         public string id { get; set; }
         public string symbol { get; set; }

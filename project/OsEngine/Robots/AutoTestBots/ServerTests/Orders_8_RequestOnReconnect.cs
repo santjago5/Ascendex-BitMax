@@ -305,6 +305,16 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
                 return;
             }
 
+            // 🔍 Логируем тип ордера и всю базовую информацию
+            this.SetNewError("INCOMING ORDER: Type = " + order.TypeOrder +
+                              ", Side = " + order.Side +
+                              ", State = " + order.State +
+                              ", Price = " + order.Price +
+                              ", Volume = " + order.Volume +
+                               ", NumberUser = " + order.NumberUser +
+                              ",OrderId = " + order.NumberMarket);
+
+
             if (order.State == OrderStateType.Active)
             {
                 _ordersActive.Add(order);
@@ -331,7 +341,7 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
             }
         }
 
-        private bool OrderIsNormal(Order order)
+        private bool OrderIsNormal(Order order)//a19730ac7ecbU3283712985X3nMiisoU
         {
             /*
             1.NumberUser – нужно указывать чтобы OsEngine распознал данный ордер как свой.
