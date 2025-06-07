@@ -218,7 +218,7 @@ namespace OsEngine.Market.Servers.BitMax
 
                 SendLogMessage($"Order placement error № {result?.Code}.", LogMessageType.Error);
             }
-            else if (result.Data.Status == "Ack")
+            else if (result.Data.Status == "Ack" )
             {
                 var newCoupler = new OrderCoupler()
                 {

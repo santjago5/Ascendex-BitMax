@@ -361,6 +361,16 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
             if (order.TypeOrder != OrderPriceType.Limit)
             {
                 this.SetNewError("Error 13. Order Type is not Limit. Real type: " + order.TypeOrder);
+                string type = order.TypeOrder.ToString();
+
+
+                this.SetNewError("INCOMING ORDER: Type = " + order.TypeOrder +
+                           ", Side = " + order.Side +
+                           ", State = " + order.State +
+                           ", Price = " + order.Price +
+                           ", Volume = " + order.Volume +
+                             ", type = " + type +
+                           ",OrderId = " + order.NumberMarket);
                 return false;
             }
 

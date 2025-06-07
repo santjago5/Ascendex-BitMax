@@ -82,26 +82,26 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         }
         private List<string> _myOrderIds = new List<string>();
-        private readonly List<OrderCoupler> _couplers = new List<OrderCoupler>();
-        public class OrderCoupler
+
+        private readonly List<OrderTracker> _orderTracker = new List<OrderTracker>();
+
+        public class OrderTracker
         {
             public int OsOrderNumberUser;
             public string OrderNumberMarket;
             public string OrderCancelId;
             public decimal CurrentVolume = 0;
         }
-        //  Dictionary<NumberUser, OrderId>
-        private static Dictionary<int, string> userToOrderMap = new Dictionary<int, string>();
-        private static Dictionary<string, int> orderToUserMap = new Dictionary<string, int>();
+       
 
         public DateTime ServerTime { get; set; }
 
-        //  private WebProxy _myProxy;
+  
         public void Connect(WebProxy proxy = null)
         {
             try
             {
-                // _myProxy = proxy;
+                
 
                 _publicKey = ((ServerParameterString)ServerParameters[0]).Value;
                 _secretKey = ((ServerParameterPassword)ServerParameters[1]).Value;
@@ -114,7 +114,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string _apiPath = "/api/pro/v2/assets";
 
-                //IRestResponse response = CreatePublicQuery(_apiPath, Method.GET, _myProxy);
+           
                 IRestResponse response = CreatePublicQuery(_apiPath, Method.GET);
 
                 if (response.StatusCode == HttpStatusCode.OK)
@@ -2352,51 +2352,30 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     //action": "cancel-Order",
                     //action": "cancel-All"
+
                     Order updateOrder = new Order();
-                    //  OrderStateType orderState = GetOrderState(json.data.st);
-
+               
                     var data = json.data;
-                    if (updateOrder.State == OrderStateType.Active)
+                    
+                    OrderTracker orderTracker = _orderTracker.Find(c => c.OrderNumberMarket == data.orderId);
+
+                    if (orderTracker == null)
                     {
-                        if (!_myOrderIds.Contains(updateOrder.NumberMarket))
-                        {
-                            _myOrderIds.Add(updateOrder.NumberMarket);
-                        }
+                        return;
                     }
-
-
-
-
-                   // OrderCoupler needCoupler = _couplers.Find(c => c.OrderNumberMarket == data.orderId);
-
-
-                    //if (needCoupler == null)
-                    //{
-                    //    return;
-                    //}
 
                     updateOrder.SecurityNameCode = json.data.s;
                     updateOrder.SecurityClassCode = GetNameClass(json.data.s);
                     updateOrder.State = GetOrderState(json.data.st);
                     updateOrder.NumberMarket = json.data.orderId;
-                   // updateOrder.NumberUser = ;//GetNumberUserByOrderId(updateOrder.NumberMarket);
+                    updateOrder.NumberUser = orderTracker.OsOrderNumberUser;
                     updateOrder.Side = (json.data.sd == "Buy") ? Side.Buy : Side.Sell;
                     updateOrder.TypeOrder = (json.data.ot == "Limit") ? OrderPriceType.Limit : OrderPriceType.Market;
                     updateOrder.Price = (json.data.p).ToDecimal();
                     updateOrder.Volume = (json.data.q).ToDecimal();
                     updateOrder.TimeCreate = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
                     updateOrder.ServerType = ServerType.AscendexSpot;
-
                     updateOrder.PortfolioNumber = "AscendexSpotPortfolio";
-
-                    if (updateOrder.State == OrderStateType.Active)
-                    {
-                        if (!_myOrderIds.Contains(updateOrder.NumberMarket))
-                        {
-                            _myOrderIds.Add(updateOrder.NumberMarket);
-                        }
-                    }
-
 
                     MyOrderEvent?.Invoke(updateOrder);
 
@@ -2506,25 +2485,25 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
 
 
-        public string GetOrderIdByNumberUser(int numberUser)
-        {
-            if (userToOrderMap.TryGetValue(numberUser, out string orderId))
-            {
-                return orderId;
-            }
+        //public string GetOrderIdByNumberUser(int numberUser)
+        //{
+        //    if (userToOrderMap.TryGetValue(numberUser, out string orderId))
+        //    {
+        //        return orderId;
+        //    }
 
-            return null;
-        }
+        //    return null;
+        //}
 
-        public int GetNumberUserByOrderId(string orderId)
-        {
-            if (orderToUserMap.TryGetValue(orderId, out int numberUser))
-            {
-                return numberUser;
-            }
+        //public int GetNumberUserByOrderId(string orderId)
+        //{
+        //    if (orderToUserMap.TryGetValue(orderId, out int numberUser))
+        //    {
+        //        return numberUser;
+        //    }
 
-            return 0; // Если не найден
-        }
+        //    return 0; // Если не найден
+        //}
 
 
         // Удалить связь, если ордер завершён
@@ -2625,42 +2604,18 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     SendLogMessage($" Order send: status {response.data.status} OrderId :{response.data.info.orderId}", LogMessageType.Error);//trade
 
 
-                    if (response.data.status == "Ack")
+                    if (response.data.status == "Ack" || response.data.status == "New" || response.data.info.status == "Done")
                     {
-                        var newCoupler = new OrderCoupler()
+                        var orderTracker = new OrderTracker()
                         {
                             OsOrderNumberUser = order.NumberUser,//844629
                             OrderNumberMarket = response.data.info.orderId//a1973fa03b91U3283712985e0Knm3dYF
                         };
 
-                        _couplers.Add(newCoupler);
-                        order.State = OrderStateType.Active;
+                        _orderTracker.Add(orderTracker);
+                        order.State = GetOrderState(response.data.status);
                         order.NumberMarket = response.data.info.orderId;
                         MyOrderEvent?.Invoke(order);
-                    }
-
-                    else if (response.data.info.status == "Done")
-                    {
-                        var newCoupler = new OrderCoupler()
-                        {
-                            OsOrderNumberUser = order.NumberUser,
-                            OrderNumberMarket = response.data.info.orderId
-                        };
-
-                        _couplers.Add(newCoupler);
-                        order.State = OrderStateType.Done;
-                        order.NumberMarket = response.data.info.orderId;
-                        MyOrderEvent?.Invoke(order);
-                    }
-
-                    if (!userToOrderMap.ContainsKey(order.NumberUser))
-                    {
-                        userToOrderMap.Add(order.NumberUser, order.NumberMarket);
-                    }
-
-                    if (!orderToUserMap.ContainsKey(order.NumberMarket))
-                    {
-                        orderToUserMap.Add(order.NumberMarket, order.NumberUser);
                     }
 
                     GetOrderState(order.NumberMarket);
@@ -2768,7 +2723,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     // SendLogMessage("CancelOrder> Deserialization resulted in null", LogMessageType.Error);
                     return;
                 }
+              
 
+              
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
                     AscendexSpotCancelOrderResponse cancelResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
@@ -2777,11 +2734,19 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         if (cancelResult.data.status == "Ack")
                         {
+                            OrderTracker OrderTracker = _orderTracker.Find(c => c.OrderNumberMarket == cancelResult.data.info.orderId);
+
+
+                            if (OrderTracker == null)
+                            {
+                                
+                            }
                             string canceledOrderId = cancelResult.data.info.orderId;
-                            string orderNumberUser = cancelResult.data.info.id;
+                            string orderNumberUser = (OrderTracker.OsOrderNumberUser).ToString(); 
+                            string accountId = cancelResult.accountId;
                             //CancelOrderSuccessResponse success = JsonConvert.DeserializeObject<CancelOrderSuccessResponse>(response.Content);
 
-                            SendLogMessage("The order has been cancelled . OrderId: " + canceledOrderId +"NumberUser:" + orderNumberUser, LogMessageType.Error);
+                            SendLogMessage("The order has been cancelled . OrderId: " + canceledOrderId +"NumberUser:" + orderNumberUser +"AccountId"+ accountId, LogMessageType.Error);
 
                             GetOrderStatus(order);
 
@@ -2893,14 +2858,24 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                         for (int i = 0; i < result.data.Count; i++)
                         {
-                            AscendexSpotOrderInfo order = result.data[i];
 
+                           
+
+
+                            AscendexSpotOrderInfo order = result.data[i];
+ OrderTracker orderTracker = _orderTracker.Find(c => c.OrderNumberMarket == order.orderId);
+                            
+
+                            if (orderTracker == null)
+                            {
+                               
+                            }
                             Order activeOrder = new Order();
                             activeOrder.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(order.lastExecTime));
                             activeOrder.ServerType = ServerType.AscendexSpot;
                             activeOrder.SecurityNameCode = order.symbol;
                             activeOrder.NumberMarket = order.orderId;
-                            activeOrder.NumberUser = GetNumberUserByOrderId(order.orderId);
+                            activeOrder.NumberUser = orderTracker.OsOrderNumberUser; //GetNumberUserByOrderId(order.orderId);
                             activeOrder.Side = order.side == "Buy" ? Side.Buy : Side.Sell;
                             activeOrder.State = GetOrderState(order.status);
                             activeOrder.TypeOrder = order.orderType == "Limit" ? OrderPriceType.Limit : OrderPriceType.Market;
@@ -2909,7 +2884,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             activeOrder.PortfolioNumber = "AscendexSpotPortfolio";
 
                             orders.Add(activeOrder);
-
                         }
                     }
                     else
@@ -2953,14 +2927,15 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-
         public void GetOrderStatus(Order order)
         {
             try
             {
 
                 if (order.NumberMarket == "")
-                { return; }
+                { 
+                    return;
+                }
 
                 if (order == null)
                 {
@@ -3085,11 +3060,18 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         AscendexSpotQueryOrderMessage orderData = response.data;
 
+                        OrderTracker orderTracker = _orderTracker.Find(c => c.OrderNumberMarket == orderData.orderId);
+                       
+
+                        if (orderTracker == null)
+                        {
+                          
+                        }
                         order.SecurityNameCode = orderData.symbol;
                         order.State = GetOrderState(orderData.status);
                         order.NumberMarket = orderData.orderId;
                         order.Price = orderData.price.ToDecimal();
-                        order.NumberUser = GetNumberUserByOrderId(orderData.orderId);
+                        order.NumberUser = orderTracker.OsOrderNumberUser; //GetNumberUserByOrderId(orderData.orderId);
                         order.PortfolioNumber = "AscendexSpotPortfolio";
                         order.SecurityClassCode = GetNameClass(orderData.symbol);
                         order.Side = orderData.side == "Buy" ? Side.Buy : Side.Sell;
@@ -3209,10 +3191,16 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         for (int i = 0; i < result.data.Count; i++)
                         {
                             AscendexSpotOrderInfo order = result.data[i];
+                            OrderTracker orderTracker = _orderTracker.Find(c => c.OrderNumberMarket == order.orderId);
+                           
 
+                            if (orderTracker == null)
+                            {
+
+                            }
                             Order historyOrder = new Order();
                             historyOrder.NumberMarket = order.orderId;
-                            historyOrder.NumberUser = GetNumberUserByOrderId(order.orderId);
+                            historyOrder.NumberUser = orderTracker.OsOrderNumberUser;// GetNumberUserByOrderId(order.orderId);
                             historyOrder.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(order.lastExecTime));
                             historyOrder.ServerType = ServerType.AscendexSpot;
                             historyOrder.SecurityNameCode = order.symbol;
@@ -3256,7 +3244,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private OrderStateType GetOrderState(string orderStateResponse)
         {
 
-            if (orderStateResponse.StartsWith("New"))
+            if (orderStateResponse.StartsWith("New") || orderStateResponse.StartsWith("Ack") || orderStateResponse.StartsWith("Done"))
             {
                 return OrderStateType.Active;
             }
@@ -3279,10 +3267,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 return OrderStateType.Cancel;
             }
-            else if (orderStateResponse.StartsWith("Ack") || orderStateResponse.StartsWith("Done"))
-            {
-                return OrderStateType.Pending;
-            }
+            //else if (orderStateResponse.StartsWith("Ack") || orderStateResponse.StartsWith("Done"))
+            //{
+            //    return OrderStateType.Pending;
+            //}
 
             return OrderStateType.None;
         }
