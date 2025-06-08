@@ -119,7 +119,7 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
 
             Order order = SendBuyOrder(mySecurity, price);
 
-            if(order == null)
+            if (order == null)
             {
                 TestEnded();
                 return;
@@ -136,11 +136,11 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
 
             DateTime startAwait = DateTime.Now;
 
-            while(Server.ServerStatus != ServerConnectStatus.Connect)
+            while (Server.ServerStatus != ServerConnectStatus.Connect)
             {
                 Thread.Sleep(1000);
 
-                if(startAwait.AddMinutes(5) < DateTime.Now)
+                if (startAwait.AddMinutes(5) < DateTime.Now)
                 {
                     SetNewError("Error 8. Server status did not change in 5 minutes");
                     TestEnded();
@@ -153,7 +153,7 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
 
             Thread.Sleep(20000);
 
-            if(_ordersActive.Count == 0)
+            if (_ordersActive.Count == 0)
             {
                 SetNewError("Error 9. No active order after 20 seconds");
                 TestEnded();
@@ -162,13 +162,13 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
 
             // 4 записываем активные ордера какие пришли после реконнекта
 
-            for(int i = 0;i < _ordersActive.Count;i++)
+            for (int i = 0; i < _ordersActive.Count; i++)
             {
-                SetNewServiceInfo("API sent Active order. NumUser: " + _ordersActive[i].NumberUser + 
-                     " NumMarket: "  + _ordersActive[i].NumberMarket + 
+                SetNewServiceInfo("API sent Active order. NumUser: " + _ordersActive[i].NumberUser +
+                     " NumMarket: " + _ordersActive[i].NumberMarket +
                      " Security: " + _ordersActive[i].SecurityNameCode);
             }
-           
+
             // 5 отзываем ордер
 
             CancelOrder(order);
@@ -305,16 +305,6 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
                 return;
             }
 
-            // 🔍 Логируем тип ордера и всю базовую информацию
-            this.SetNewError("INCOMING ORDER: Type = " + order.TypeOrder +
-                              ", Side = " + order.Side +
-                              ", State = " + order.State +
-                              ", Price = " + order.Price +
-                              ", Volume = " + order.Volume +
-                               ", NumberUser = " + order.NumberUser +
-                              ",OrderId = " + order.NumberMarket);
-
-
             if (order.State == OrderStateType.Active)
             {
                 _ordersActive.Add(order);
@@ -341,7 +331,7 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
             }
         }
 
-        private bool OrderIsNormal(Order order)//a19730ac7ecbU3283712985X3nMiisoU
+        private bool OrderIsNormal(Order order)
         {
             /*
             1.NumberUser – нужно указывать чтобы OsEngine распознал данный ордер как свой.
@@ -361,19 +351,8 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
             if (order.TypeOrder != OrderPriceType.Limit)
             {
                 this.SetNewError("Error 13. Order Type is not Limit. Real type: " + order.TypeOrder);
-                string type = order.TypeOrder.ToString();
-
-
-                this.SetNewError("INCOMING ORDER: Type = " + order.TypeOrder +
-                           ", Side = " + order.Side +
-                           ", State = " + order.State +
-                           ", Price = " + order.Price +
-                           ", Volume = " + order.Volume +
-                             ", type = " + type +
-                           ",OrderId = " + order.NumberMarket);
                 return false;
             }
-
 
             if (order.TimeCallBack == DateTime.MinValue)
             {
