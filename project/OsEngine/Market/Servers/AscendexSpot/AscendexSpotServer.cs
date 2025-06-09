@@ -26,6 +26,8 @@ using CloseEventArgs = OsEngine.Entity.WebSocketOsEngine.CloseEventArgs;
 using MessageEventArgs = OsEngine.Entity.WebSocketOsEngine.MessageEventArgs;
 using Timer = System.Timers.Timer;
 using static OsEngine.Market.Servers.AscendexSpot.AscendexSpotServerRealization;
+using OsEngine.Market.Servers.Transaq.TransaqEntity;
+using OsEngine.Market.Servers;
 
 
 
@@ -74,35 +76,35 @@ namespace OsEngine.Market.Servers.AscendexSpot
             threadForPrivateMessages.Name = "PrivateMessageReaderAscendexSpot";
             threadForPrivateMessages.Start();
 
-            Thread threadCheckAliveWebSocket = new Thread(CheckAliveWebSocket);
-            threadCheckAliveWebSocket.IsBackground = true;
-            threadCheckAliveWebSocket.Name = "CheckAliveWebSocket";
-            threadCheckAliveWebSocket.Start();
+            //Thread threadCheckAliveWebSocket = new Thread(CheckAliveWebSocket);
+            //threadCheckAliveWebSocket.IsBackground = true;
+            //threadCheckAliveWebSocket.Name = "CheckAliveWebSocket";
+            //threadCheckAliveWebSocket.Start();
 
 
 
         }
-       
 
-        public static  List<OrderTracker> _orderTracker = new List<OrderTracker>();
+
+        public static List<OrderTracker> _orderTracker = new List<OrderTracker>();
 
         public class OrderTracker
         {
             public int OsOrderNumberUser;
             public string OrderNumberMarket;
             public string OrderCancelId;
-            public decimal CurrentVolume = 0;
+
         }
-       
+
 
         public DateTime ServerTime { get; set; }
-   
+
 
         public void Connect(WebProxy proxy = null)
         {
             try
             {
-               
+
                 _publicKey = ((ServerParameterString)ServerParameters[0]).Value;
                 _secretKey = ((ServerParameterPassword)ServerParameters[1]).Value;
 
@@ -114,7 +116,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string _apiPath = "/api/pro/v2/assets";
 
-               
+
                 IRestResponse response = CreatePublicQuery(_apiPath, Method.GET);
 
                 if (response.StatusCode == HttpStatusCode.OK)
@@ -167,16 +169,16 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     if (string.IsNullOrWhiteSpace(security.Name))
                     {
-                        SendLogMessage(" Cannot unsubscribe — security is null or empty.", LogMessageType.Error);
+                        SendLogMessage("Cannot unsubscribe — security is null or empty.", LogMessageType.Error);
                         return;
                     }
 
                     UnsubscribeFromAllWebSockets();
-                  
+
                 }
 
-                DeleteWebSocketConnection(); 
-            
+                DeleteWebSocketConnection();
+
             }
             catch (Exception exception)
             {
@@ -220,7 +222,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private void StartClientPingTimer()
         {
             // создаём таймер на 15 секунд
-            _clientPingTimer = new Timer(15000);
+            _clientPingTimer = new Timer(10000);
 
             // подписка на событие
             _clientPingTimer.Elapsed += (sender, e) =>
@@ -229,7 +231,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 var ping = new { op = "ping" };
 
                 string json = JsonConvert.SerializeObject(ping);
-           
+
                 for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
                 {
                     WebSocket socket = _webSocketPublicMarketDepths[i];
@@ -258,7 +260,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             _clientPingTimer.AutoReset = true;
             _clientPingTimer.Start(); // запускаем таймер
-
 
         }
 
@@ -317,8 +318,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             string symbol = securityList.data[i].symbol;
                             string price = securityList.data[i].tickSize;
                             string domain = securityList.data[i].domain;
+                            string statusCode = securityList.data[i].statusCode;
 
-                            if (symbol.Contains("$") || domain.Contains("LeveragedETF"))
+                            if (symbol.Contains("$") || domain.Contains("LeveragedETF") || statusCode != "Normal")
+
                             {
                                 continue;
                             }
@@ -336,7 +339,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             newSecurity.PriceStep = securityList.data[i].tickSize.ToString().ToDecimal();
                             newSecurity.Decimals = price.DecimalsCount() == 0 ? 1 : price.DecimalsCount();
 
-
                             if (newSecurity.PriceStep == 0)
                             {
                                 newSecurity.PriceStep = 1;
@@ -348,7 +350,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             newSecurity.MinTradeAmountType = MinTradeAmountType.Contract;
                             newSecurity.VolumeStep = newSecurity.DecimalsVolume.GetValueByDecimals();
                             securities.Add(newSecurity);
-
                         }
 
                         if (SecurityEvent != null)
@@ -691,8 +692,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     // Проверка: если объект пустой или вернулся неуспешный код
                     if (json == null || json.code != "0" || json.data == null)
                     {
-                        SendLogMessage(" Data format error or response code != 0", LogMessageType.Error);
-                        return new List<Candle>();
+                        
+                        SendLogMessage($"{ json.code }, {json.data}, Data format error or response code != 0" , LogMessageType.Error );
+                        return null;
+                       // return new List<Candle>();
                     }
 
                     List<AscendexSpotCandleData> candleList = new List<AscendexSpotCandleData>();
@@ -701,9 +704,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         AscendexSpotCandleData candleData = json.data[i].data;
 
-
                         Candle candle = new Candle();
-
 
                         candle.TimeStart = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(candleData.ts));
                         candle.Open = Convert.ToDecimal(candleData.o);
@@ -793,13 +794,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         #region 6 WebSocket creation
 
-        //"{\"m\":\"disconnected\",\"code\":100005,\"reason\":\"INVALID_WS_REQUEST_DATA\",\"info\":\"Session is disconnected due to missing pong message from the client\"}"
+
         private void PublicMessageMarketDepthsReader()
         {
             Thread.Sleep(2000);
 
             while (true)
-            {//		message	"{\"m\":\"pong\",\"code\":0,\"ts\":1749116192008,\"hp\":4}"	string
+            {
 
                 try
                 {
@@ -815,18 +816,36 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         continue;
                     }
                     //{"m":"connected","type":"unauth"}
+                    //{ "op":"connected","type":"auth"}
+                    // { "op":"connected","type":"unauth"}
                     //{"m":"sub","ch":"depth:1INCH/USDT","code":0}
 
                     FIFOListWebSocketPublicMarketDepthsMessage.TryDequeue(out string message);
-                    // if(){
+                  
                     if (message == null)
                     {
                         continue;
                     }
 
-                    else if (message.Contains("\"m\":\"error\""))//{"m":"error","code":150001,"reason":"INVALID_JSON_FORMAT","info":"Unable to parse json: pong"}
+                    else if (message.Contains("\"m\":\"ping\""))
                     {
-                        SendLogMessage("\"code\":150001,\"reason\":\"INVALID_JSON_FORMAT\",\"info\":\"Unable to parse json: pong\"}", LogMessageType.Error);
+                        for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
+                        {
+                            WebSocket socket = _webSocketPublicMarketDepths[i];
+                            if (socket.ReadyState == WebSocketState.Open)
+                            {
+                                socket.Send("{\"op\":\"pong\"}");
+                                SendLogMessage(">>> [Pong] Responded to server ping from depth socket", LogMessageType.System);
+                            }
+                        }
+                        return;
+                    }
+
+                    else if (message.Contains("\"m\":\"error\""))
+                    {
+                        SendLogMessage($"/MarketDepths-{message}", LogMessageType.Error);
+
+
                         return;
                     }
 
@@ -842,8 +861,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         UpdateDepth(message);
                         continue;
                     }
-
-
                 }
                 catch (Exception exception)
                 {
@@ -852,7 +869,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
             }
         }
-
 
         private void PublicMessageTradesReader()
         {
@@ -874,14 +890,17 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     FIFOListWebSocketPublicTradesMessage.TryDequeue(out string message);
 
-
                     if (message == null)
                     {
                         continue;
                     }
 
+                    else if (message.Contains("\"m\":\"error\""))
+                    {
+                        SendLogMessage($"//PublicTrades-{message}", LogMessageType.Error);
 
-
+                        return;
+                    }
                     if (message.Contains("\"m\":\"trades\""))
                     {
                         UpdateTrade(message);
@@ -898,7 +917,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                                 SendLogMessage(">>> [Pong] Responded to server ping from Trades socket", LogMessageType.System);
                             }
                         }
-                        continue;
+                        return;
                     }
                 }
                 catch (Exception exception)
@@ -939,31 +958,21 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         continue;
                     }
 
-                    //SendLogMessage("<<< " + message, LogMessageType.Error);
+                    else if (message.Contains("\"m\":\"error\""))
+                    {
+                        SendLogMessage($"///Private - {message}", LogMessageType.Error);
+
+                        return;
+                    }
 
                     // если пришёл ping от сервера "{\"m\":\"ping\",\"hp\":3}"	
 
                     if (message.Contains("\"m\":\"ping\""))
                     {
-                        SendLogMessage(">>> Responding with pong: {\"op\":\"pong\"}", LogMessageType.Error);
+                        SendLogMessage(">>> Responding with pong: {\"op\":\"pong\"}", LogMessageType.System);
 
-                        // ответить pong-сообщением
                         _webSocketPrivate.Send("{\"op\":\"pong\"}");
                     }
-
-                    //// если пришёл pong от сервера
-                    //else if (message.Contains("\"m\":\"pong\""))
-                    //{
-                    //    SendLogMessage("<<< Received pong (server response to our ping)", LogMessageType.Error);
-                    //    continue;
-                    //}
-                    //		message	"{\"m\":\"connected\",\"type\":\"unauth\"}"	string
-
-                    //if (message.Contains("\"m\":\"ping\""))
-                    //{
-                    //    SendPong(_webSocketPrivate);
-                    //    return;
-                    //}
 
                     if (message.Contains("\"op\":\"auth\""))
                     {
@@ -983,10 +992,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             SendLogMessage($"WebSocket authentication error: Invalid public or secret key: {authResponse.err}", LogMessageType.Error);
                         }
                     }
-                    //{"m":"error","code":150001,"reason":"INVALID_JSON_FORMAT","info":"Unable to parse json: pong"}
-                    else if (message.Contains("\"m\":\"error\""))//{"m":"error","code":150001,"reason":"INVALID_JSON_FORMAT","info":"Unable to parse json: pong"}
+
+                    else if (message.Contains("\"m\":\"error\""))
                     {
-                        SendLogMessage("\"code\":150001,\"reason\":\"INVALID_JSON_FORMAT\",\"info\":\"Unable to parse json: pong\"}", LogMessageType.Error);
+                        SendLogMessage($"Private {message}", LogMessageType.Error);
                         return;
                     }
 
@@ -1012,8 +1021,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-
-
         private ConcurrentQueue<string> FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
         private ConcurrentQueue<string> FIFOListWebSocketPublicMarketDepthsMessage = new ConcurrentQueue<string>();
         private ConcurrentQueue<string> FIFOListWebSocketPublicTradesMessage = new ConcurrentQueue<string>();
@@ -1024,7 +1031,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private WebSocket _webSocketPrivate;
 
         private string _webSocketUrl = "wss://ascendex.com/1/api/pro/v1/stream";
-
 
         private void CreatePublicWebSocketMarketDepthsConnect()
         {
@@ -1091,7 +1097,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-
         private void CreatePublicWebSocketTradesConnect()
         {
             try
@@ -1156,7 +1161,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-
         private void WebSocketPublicTradesNew_OnError(object sender, ErrorEventArgs e)
         {
             try
@@ -1187,18 +1191,21 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     return;
                 }
+
+
                 if (e.Data.Contains("\"m\":\"ping\""))
                 {
-                    WebSocket socket = sender as WebSocket;
-                    if (socket != null && socket.ReadyState == WebSocketState.Open)
+                    for (int i = 0; i < _webSocketPublicTrades.Count; i++)
                     {
-                        socket.Send("{\"op\":\"pong\"}");
-                        SendLogMessage(">>> [Pong] Responded to server ping from Trades socket (OnMessage)", LogMessageType.System);
+                        WebSocket socket = _webSocketPublicTrades[i];
+                        if (socket.ReadyState == WebSocketState.Open)
+                        {
+                            socket.Send("{\"op\":\"pong\"}"); // правильно!
+
+                        }
                     }
                     return;
                 }
-
-
 
                 FIFOListWebSocketPublicTradesMessage?.Enqueue(e.Data);
             }
@@ -1235,8 +1242,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
         }
-
-
 
         private void CreatePrivateWebSocketConnect()
         {
@@ -1346,7 +1351,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-
         private void GenerateAuthenticate()
         {
             try
@@ -1408,7 +1412,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     CheckActivationSockets();
                     SendLogMessage("AscendexSpot WebSocket public MarketDepths connection open", LogMessageType.System);
-
                 }
             }
             catch (Exception exception)
@@ -1431,7 +1434,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
         private void WebSocketPublicMarketDepthsNew_OnMessage(object sender, MessageEventArgs e)
         {
-
             try
             {
                 if (ServerStatus == ServerConnectStatus.Disconnect
@@ -1445,17 +1447,38 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     return;
                 }
-                if (e.Data.Contains("\"m\":\"ping\""))
+
+                if (e.IsText && e.Data.Contains("\"m\":\"connected\""))
                 {
-                    WebSocket socket = sender as WebSocket;
-                    if (socket != null && socket.ReadyState == WebSocketState.Open)
+                    if (e.Data.Contains("\"type\":\"unauth\""))
                     {
-                        socket.Send("{\"op\":\"pong\"}");
-                        SendLogMessage(">>> [Pong] Responded to server ping from MarketDepths socket (OnMessage)", LogMessageType.System);
+
+                        SendLogMessage("WebSocket publicDepth opened", LogMessageType.System);
                     }
-                    return;
+
+                    else
+                    {
+                        ServerStatus = ServerConnectStatus.Disconnect;
+                        DisconnectEvent();
+                        SendLogMessage($"WebSocket publicDepth  error {e.Data}", LogMessageType.Error);
+                    }
                 }
 
+                if (e.Data.Contains("\"m\":\"ping\""))
+                {
+                    for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
+                    {
+                        WebSocket socket = _webSocketPublicMarketDepths[i];
+
+                        if (socket.ReadyState == WebSocketState.Open)
+                        {
+                            socket.Send("{\"op\":\"pong\"}"); // правильно!
+                            SendLogMessage(">>> [Pong] Responded to server ping", LogMessageType.System);
+                        }
+                    }
+
+                    return;
+                }
 
                 if (e.IsText)
                 {
@@ -1468,6 +1491,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage(error.ToString(), LogMessageType.Error);
             }
         }
+
         private void WebSocketPublicMarketDepthsNew_OnError(object sender, ErrorEventArgs e)///переделать как в битфайнекс
         {
             if (e.Exception != null)
@@ -1529,12 +1553,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
-                else if (e.IsText && e.Data.Contains("\"m\":\"connected\"") && e.Data.Contains("\"type\":\"unauth\""))
-                {
-
-                    SendLogMessage("Connected to private channels ", LogMessageType.System);
-                }
-
                 else if (e.IsText && e.Data.Contains("\"op\":\"auth\"") && e.Data.Contains("\"code\":0"))
                 {
 
@@ -1543,23 +1561,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (e.Data.Contains("\"m\":\"ping\""))
                 {
-                    WebSocket socket = sender as WebSocket;
-                    if (socket != null && socket.ReadyState == WebSocketState.Open)
+                    if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open)
                     {
-                        socket.Send("{\"op\":\"pong\"}");
-                        SendLogMessage(">>> [Pong] Responded to server ping from Private socket (OnMessage)", LogMessageType.System);
+                        _webSocketPrivate.Send("{\"op\":\"pong\"}");
+                        SendLogMessage(">>> [Pong] Responded to server ping (Private socket)", LogMessageType.System);
                     }
                     return;
                 }
-                //else if (e.Data.Contains("\"m\":\"ping\"")) //(e.IsText && e.Data.Contains("ping"))
-                //{
 
-                //    _webSocketPrivate.Send("{\"op\":\"pong\"}");
-
-                //       return;
-
-
-                //}
 
                 FIFOListWebSocketPrivateMessage.Enqueue(e.Data);
 
@@ -1717,7 +1726,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
             }
         }
-     
+
         #endregion
 
         #region  9  WebSocket security subscribe
@@ -1961,9 +1970,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
         public event Action<Order> MyOrderEvent;
         public event Action<MyTrade> MyTradeEvent;
         public event Action<OptionMarketDataForConnector> AdditionalMarketDataEvent;
-
-
-
 
 
         // Обработка стакана: инициализация снапшотом и обновлениями
@@ -2348,27 +2354,27 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 //    return;
                 //}
 
+
                 if (json != null && json.m == "order" && json.data != null)
                 {
                     //action": "cancel-Order",
                     //action": "cancel-All"
 
                     Order updateOrder = new Order();
-               
-                    var data = json.data;
-                    
-                    //OrderTracker orderTracker = _orderTracker.Find(c => c.OrderNumberMarket == data.orderId);
 
-                    //if (orderTracker == null)
-                    //{
-                        
-                    //}
+                    var data = json.data;
+                    OrderTracker tracker = _orderTracker.Find(t => t.OrderNumberMarket == json.data.orderId);
+
+                    if (tracker != null)
+                    {
+                        updateOrder.NumberUser = tracker.OsOrderNumberUser;
+                    }
 
                     updateOrder.SecurityNameCode = json.data.s;
                     updateOrder.SecurityClassCode = GetNameClass(json.data.s);
                     updateOrder.State = GetOrderState(json.data.st);
                     updateOrder.NumberMarket = json.data.orderId;
-                    //updateOrder.NumberUser = orderTracker.OsOrderNumberUser;
+                    //updateOrder.NumberUser = _orderTracker.;
                     updateOrder.Side = (json.data.sd == "Buy") ? Side.Buy : Side.Sell;
                     updateOrder.TypeOrder = (json.data.ot == "Limit") ? OrderPriceType.Limit : OrderPriceType.Market;
                     updateOrder.Price = (json.data.p).ToDecimal();
@@ -2379,26 +2385,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     MyOrderEvent?.Invoke(updateOrder);
 
-                    //if (orderState == OrderStateType.Done || orderState == OrderStateType.Partial)
-                    //{
-                    //    UpdateMyTrade(json);
-
-                    //    //updateOrder.State = GetOrderState(json.data.st);
-                    //    updateOrder.TimeDone = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
-                    //}
-                    
-                    //    updateOrder.TimeCancel = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
-                    //}
-
-                    //  RemoveCompletedOrder(updateOrder.NumberMarket, (updateOrder.State).ToString());
-                    // GetOrderStatus(updateOrder);
-
                     if (json.data.st == "PartiallyFilled" || json.data.st == "Filled")
                     {
-                        var cumVolume = data.cfq.ToDecimal();
 
-                        //var tradeVolume = cumVolume - needCoupler.CurrentVolume;
-                        //needCoupler.CurrentVolume += tradeVolume;
+                        if (string.IsNullOrEmpty(data.cfq) || string.IsNullOrEmpty(data.ap))
+                        {
+                            SendLogMessage("UpdateOrder> Trade skipped due to missing data (cfq or ap)", LogMessageType.Error);
+                            return;
+                        }
 
                         MyTrade myTrade = new MyTrade
                         {
@@ -2406,14 +2400,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             Side = data.sd == "Buy" ? Side.Buy : Side.Sell,
                             SecurityNameCode = data.s,
                             Price = data.ap.ToDecimal(),
-                            Volume = cumVolume,//tradeVolume,
+                            Volume = data.cfq.ToDecimal(),
                             NumberTrade = data.sn.ToString(),
                             Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(data.t)),
                         };
 
                         MyTradeEvent?.Invoke(myTrade);
                     }
-
                 }
             }
             catch (Exception exception)
@@ -2422,7 +2415,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-     
         private void UpdatePortfolio(WebSocketMessage<AscendexSpotPortfolio> json)
         {
             try
@@ -2440,7 +2432,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 portfolio.ServerType = ServerType.AscendexSpot;
 
 
-
                 if (json != null && json.m == "balance" && json.data != null)
                 {
 
@@ -2454,7 +2445,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     position.ValueBlocked = position.ValueBegin.ToString().ToDecimal() - position.ValueCurrent.ToString().ToDecimal();
 
                     portfolio.SetNewPosition(position);
-
 
                     _portfolios.Add(portfolio);
                 }
@@ -2471,7 +2461,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
         #endregion
-        
+
         //public void RemoveAllCompletedOrders(List<AscendexSpotOrderInfo> orders)
         //{
         //    for (int i = 0; i < orders.Count; i++)
@@ -2551,7 +2541,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string body;
 
-              //  if (order.TypeOrder == OrderPriceType.Limit)
+                //  if (order.TypeOrder == OrderPriceType.Limit)
                 if (typeOrder == "Limit")
                 {
                     body = $"{{" +
@@ -2587,7 +2577,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
-            
+
                 AscendexSpotOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(request.Content);
 
                 if (request.StatusCode == HttpStatusCode.OK && response.code != "0")//844629
@@ -2606,8 +2596,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         var orderTracker = new OrderTracker()
                         {
-                            OsOrderNumberUser = order.NumberUser,//844629
-                            OrderNumberMarket = response.data.info.orderId//a1973fa03b91U3283712985e0Knm3dYF
+                            OsOrderNumberUser = order.NumberUser,
+                            OrderNumberMarket = response.data.info.orderId
                         };
 
                         _orderTracker.Add(orderTracker);
@@ -2644,7 +2634,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         MyOrderEvent?.Invoke(order);
                     }
 
-                    GetOrderState(order.NumberMarket);
+                    //GetOrderState(order.NumberMarket);
                     MyOrderEvent?.Invoke(order);
                 }
                 //else
@@ -2750,9 +2740,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     // SendLogMessage("CancelOrder> Deserialization resulted in null", LogMessageType.Error);
                     return;
                 }
-              
 
-              
+
+
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
                     AscendexSpotCancelOrderResponse cancelResult = JsonConvert.DeserializeObject<AscendexSpotCancelOrderResponse>(response.Content);
@@ -2766,18 +2756,17 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                             //if (OrderTracker == null)
                             //{
-                                
+
                             //}
                             Order cancelOrd = new Order();
 
                             cancelOrd.NumberMarket = cancelResult.data.info.orderId;
                             cancelOrd.NumberUser = order.NumberUser;//(OrderTracker.OsOrderNumberUser).ToString(); 
                             cancelOrd.TimeCancel = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(cancelResult.data.info.timestamp));
-                            string accountId = cancelResult.accountId;
 
                             //CancelOrderSuccessResponse success = JsonConvert.DeserializeObject<CancelOrderSuccessResponse>(response.Content);
 
-                            SendLogMessage("The order has been cancelled . OrderId: " + cancelOrd.NumberMarket + "NumberUser:" + cancelOrd.NumberUser + "AccountId"+ accountId, LogMessageType.Error);
+                            SendLogMessage("The order has been cancelled . OrderId: " + cancelOrd.NumberMarket + "NumberUser:" + cancelOrd.NumberUser, LogMessageType.Error);
 
                             GetOrderStatus(order);
 
@@ -2890,27 +2879,27 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         for (int i = 0; i < result.data.Count; i++)
                         {
                             AscendexSpotOrderInfo order = result.data[i];
-                            //OrderTracker orderTracker = _orderTracker.Find(c => c.OrderNumberMarket == order.orderId);
-                            
+                            OrderTracker orderTracker = _orderTracker.Find(c => c.OrderNumberMarket == order.orderId);
 
-                            //if (orderTracker == null)
-                            //{
-                            //    SendLogMessage("orderTracker == null", LogMessageType.Error);
-                            //}
+
+                            if (orderTracker == null)
+                            {
+                                SendLogMessage("orderTracker == null", LogMessageType.Error);
+                            }
 
                             Order activeOrder = new Order();
                             activeOrder.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(order.lastExecTime));
                             activeOrder.ServerType = ServerType.AscendexSpot;
                             activeOrder.SecurityNameCode = order.symbol;
                             activeOrder.NumberMarket = order.orderId;
-                           // activeOrder.NumberUser =order. // orderTracker.OsOrderNumberUser; //GetNumberUserByOrderId(order.orderId);
+                            activeOrder.NumberUser = orderTracker.OsOrderNumberUser; //GetNumberUserByOrderId(order.orderId);
                             activeOrder.Side = order.side == "Buy" ? Side.Buy : Side.Sell;
                             activeOrder.State = GetOrderState(order.status);
                             activeOrder.TypeOrder = order.orderType == "Limit" ? OrderPriceType.Limit : OrderPriceType.Market;
                             activeOrder.Volume = (order.orderQty).ToDecimal();
                             activeOrder.Price = order.price.ToDecimal();
                             activeOrder.PortfolioNumber = "AscendexSpotPortfolio";
-                            
+
                             orders.Add(activeOrder);
 
 
@@ -2934,7 +2923,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                                     writer.WriteLine(line);
                                 }
                             }
-                            catch { SendLogMessage(" не могу записать ActiveOrder.txt",LogMessageType.Error); }
+                            catch { SendLogMessage(" не могу записать ActiveOrder.txt", LogMessageType.Error); }
                         }
                     }
                     else
@@ -3038,6 +3027,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 if (orderOnMarket.State == OrderStateType.Done || orderOnMarket.State == OrderStateType.Partial)
                 {
                     MyTrade myTrade = new MyTrade();
+
                     myTrade.SecurityNameCode = orderOnMarket.SecurityNameCode;
                     myTrade.NumberOrderParent = orderOnMarket.NumberMarket;
                     myTrade.Price = orderOnMarket.Price.ToString().ToDecimal();
@@ -3046,6 +3036,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     myTrade.Time = orderOnMarket.TimeDone;
 
                     MyTradeEvent?.Invoke(myTrade);
+
                     SendLogMessage(myTrade.ToString(), LogMessageType.Trade);
                 }
             }
@@ -3098,18 +3089,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         AscendexSpotQueryOrderMessage orderData = response.data;
 
-                        OrderTracker orderTracker = _orderTracker.Find(c => c.OrderNumberMarket == orderData.orderId);
-                       
-
-                        if (orderTracker == null)
-                        {
-                          
-                        }
                         order.SecurityNameCode = orderData.symbol;
                         order.State = GetOrderState(orderData.status);
                         order.NumberMarket = orderData.orderId;
                         order.Price = orderData.price.ToDecimal();
-                        order.NumberUser = orderTracker.OsOrderNumberUser; //GetNumberUserByOrderId(orderData.orderId);
+                        //order.NumberUser = order.NumberUser; //GetNumberUserByOrderId(orderData.orderId);
                         order.PortfolioNumber = "AscendexSpotPortfolio";
                         order.SecurityClassCode = GetNameClass(orderData.symbol);
                         order.Side = orderData.side == "Buy" ? Side.Buy : Side.Sell;
@@ -3222,14 +3206,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         if (result.data.Count == 0)
                         {
-                            // SendLogMessage($"No active orders", LogMessageType.Error);
                             return new List<Order>();
                         }
 
                         for (int i = 0; i < result.data.Count; i++)
                         {
                             AscendexSpotOrderInfo order = result.data[i];
-                           
+
                             Order historyOrder = new Order();
                             historyOrder.NumberMarket = order.orderId;
                             ///historyOrder.NumberUser = //orderTracker.OsOrderNumberUser;// GetNumberUserByOrderId(order.orderId);
@@ -3331,9 +3314,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             return OrderStateType.None;
         }
 
-
         #endregion
-
 
         public bool SubscribeNews()
         {
@@ -3386,7 +3367,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             ["/api/pro/data/v1/margin/balance/history"] = "data/v1/margin/balance/history",
             ["/1/api/pro/v1/cash/balance"] = "balance", //[$"/{accountGroup}/api/pro/v1/cash/balance"] = "balance"
             ["/1/api/pro/v1/margin/balance"] = "balance",
-            
+
 
         };
 
