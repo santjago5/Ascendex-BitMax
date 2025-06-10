@@ -827,19 +827,19 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         continue;
                     }
 
-                    else if (message.Contains("\"m\":\"ping\""))
-                    {
-                        for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
-                        {
-                            WebSocket socket = _webSocketPublicMarketDepths[i];
-                            if (socket.ReadyState == WebSocketState.Open)
-                            {
-                                socket.Send("{\"op\":\"pong\"}");
-                                SendLogMessage(">>> [Pong] Responded to server ping from depth socket", LogMessageType.System);
-                            }
-                        }
-                        return;
-                    }
+                    //else if (message.Contains("\"m\":\"ping\""))
+                    //{
+                    //    for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
+                    //    {
+                    //        WebSocket socket = _webSocketPublicMarketDepths[i];
+                    //        if (socket.ReadyState == WebSocketState.Open)
+                    //        {
+                    //            socket.Send("{\"op\":\"pong\"}");
+                    //            SendLogMessage(">>> [Pong] Responded to server ping from depth socket", LogMessageType.System);
+                    //        }
+                    //    }
+                    //    return;
+                    //}
 
                     else if (message.Contains("\"m\":\"error\""))
                     {
@@ -906,19 +906,19 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         UpdateTrade(message);
                     }
 
-                    else if (message.Contains("\"m\":\"ping\""))
-                    {
-                        for (int i = 0; i < _webSocketPublicTrades.Count; i++)
-                        {
-                            WebSocket socket = _webSocketPublicTrades[i];
-                            if (socket.ReadyState == WebSocketState.Open)
-                            {
-                                socket.Send("{\"op\":\"pong\"}");
-                                SendLogMessage(">>> [Pong] Responded to server ping from Trades socket", LogMessageType.System);
-                            }
-                        }
-                        return;
-                    }
+                    //else if (message.Contains("\"m\":\"ping\""))
+                    //{
+                    //    for (int i = 0; i < _webSocketPublicTrades.Count; i++)
+                    //    {
+                    //        WebSocket socket = _webSocketPublicTrades[i];
+                    //        if (socket.ReadyState == WebSocketState.Open)
+                    //        {
+                    //            socket.Send("{\"op\":\"pong\"}");
+                    //            SendLogMessage(">>> [Pong] Responded to server ping from Trades socket", LogMessageType.System);
+                    //        }
+                    //    }
+                    //    return;
+                    //}
                 }
                 catch (Exception exception)
                 {
@@ -967,12 +967,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     // если пришёл ping от сервера "{\"m\":\"ping\",\"hp\":3}"	
 
-                    if (message.Contains("\"m\":\"ping\""))
-                    {
-                        SendLogMessage(">>> Responding with pong: {\"op\":\"pong\"}", LogMessageType.System);
+                    //if (message.Contains("\"m\":\"ping\""))
+                    //{
+                    //    SendLogMessage(">>> Responding with pong: {\"op\":\"pong\"}", LogMessageType.System);
 
-                        _webSocketPrivate.Send("{\"op\":\"pong\"}");
-                    }
+                    //    _webSocketPrivate.Send("{\"op\":\"pong\"}");
+                    //}
 
                     if (message.Contains("\"op\":\"auth\""))
                     {
@@ -1081,7 +1081,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 //    webSocketPublicNew.SetProxy(_myProxy);
                 //}
 
-                webSocketPublicMarketDepthsNew.EmitOnPing = true;
+                webSocketPublicMarketDepthsNew.EmitOnPing = false;
                 webSocketPublicMarketDepthsNew.OnOpen += WebSocketPublicMarketDepthsNew_OnOpen;
                 webSocketPublicMarketDepthsNew.OnClose += WebSocketPublicMarketDepthsNew_OnClose;
                 webSocketPublicMarketDepthsNew.OnMessage += WebSocketPublicMarketDepthsNew_OnMessage;
@@ -1145,7 +1145,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 WebSocket webSocketPublicTradesNew = new WebSocket(_webSocketUrl);
 
-                webSocketPublicTradesNew.EmitOnPing = true;
+                webSocketPublicTradesNew.EmitOnPing = false;
                 webSocketPublicTradesNew.OnOpen += WebSocketPublicTradesNew_OnOpen;
                 webSocketPublicTradesNew.OnClose += WebSocketPublicTradesNew_OnClose;
                 webSocketPublicTradesNew.OnMessage += WebSocketPublicTradesNew_OnMessage;
@@ -1180,34 +1180,31 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                if (ServerStatus == ServerConnectStatus.Disconnect
-                    || e?.Data == null
-                    || string.IsNullOrEmpty(e.Data))
+                // Проверка состояния сервера и сообщения
+                if (ServerStatus == ServerConnectStatus.Disconnect ||
+                    e == null ||
+                    string.IsNullOrEmpty(e.Data) ||
+                    FIFOListWebSocketPublicTradesMessage == null)
                 {
                     return;
                 }
 
-                if (FIFOListWebSocketPublicTradesMessage == null)
+                // Обработка ping
+                if (e.IsText && e.Data.Contains("\"m\":\"ping\""))
                 {
-                    return;
-                }
+                    WebSocket socket = sender as WebSocket;
 
-
-                if (e.Data.Contains("\"m\":\"ping\""))
-                {
-                    for (int i = 0; i < _webSocketPublicTrades.Count; i++)
+                    if (socket != null && socket.ReadyState == WebSocketState.Open)
                     {
-                        WebSocket socket = _webSocketPublicTrades[i];
-                        if (socket.ReadyState == WebSocketState.Open)
-                        {
-                            socket.Send("{\"op\":\"pong\"}"); // правильно!
-
-                        }
+                        socket.Send("{\"op\":\"pong\"}");
+                        SendLogMessage(">>> [Pong] Responded to server ping (Trades socket)", LogMessageType.System);
                     }
+
                     return;
                 }
 
-                FIFOListWebSocketPublicTradesMessage?.Enqueue(e.Data);
+                // Помещение остальных сообщений в очередь
+                FIFOListWebSocketPublicTradesMessage.Enqueue(e.Data);
             }
             catch (Exception exception)
             {
@@ -1261,7 +1258,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 //    _webSocketPrivate.SetProxy(_myProxy);
                 //}
 
-                _webSocketPrivate.EmitOnPing = true;
+                _webSocketPrivate.EmitOnPing = false;
                 _webSocketPrivate.OnOpen += _webSocketPrivate_OnOpen;
                 _webSocketPrivate.OnClose += _webSocketPrivate_OnClose;
                 _webSocketPrivate.OnMessage += _webSocketPrivate_OnMessage;
@@ -1432,59 +1429,56 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
         }
+   
         private void WebSocketPublicMarketDepthsNew_OnMessage(object sender, MessageEventArgs e)
         {
             try
             {
-                if (ServerStatus == ServerConnectStatus.Disconnect
-                    || e?.Data == null
-                    || string.IsNullOrEmpty(e.Data))
+                // 1. Проверка статуса подключения и содержимого сообщения
+                if (ServerStatus == ServerConnectStatus.Disconnect ||
+                    e == null ||
+                    string.IsNullOrEmpty(e.Data) ||
+                    FIFOListWebSocketPublicMarketDepthsMessage == null)
                 {
                     return;
                 }
 
-                if (FIFOListWebSocketPublicMarketDepthsMessage == null)
-                {
-                    return;
-                }
-
+                // 3. Обработка системного сообщения о соединении
                 if (e.IsText && e.Data.Contains("\"m\":\"connected\""))
                 {
                     if (e.Data.Contains("\"type\":\"unauth\""))
                     {
-
                         SendLogMessage("WebSocket publicDepth opened", LogMessageType.System);
                     }
-
                     else
                     {
                         ServerStatus = ServerConnectStatus.Disconnect;
                         DisconnectEvent();
-                        SendLogMessage($"WebSocket publicDepth  error {e.Data}", LogMessageType.Error);
-                    }
-                }
-
-                if (e.Data.Contains("\"m\":\"ping\""))
-                {
-                    for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
-                    {
-                        WebSocket socket = _webSocketPublicMarketDepths[i];
-
-                        if (socket.ReadyState == WebSocketState.Open)
-                        {
-                            socket.Send("{\"op\":\"pong\"}"); // правильно!
-                            SendLogMessage(">>> [Pong] Responded to server ping", LogMessageType.System);
-                        }
+                        SendLogMessage($"WebSocket publicDepth error {e.Data}", LogMessageType.Error);
                     }
 
                     return;
                 }
 
+                // 4. Перехват ping-сообщения от сервера и отправка pong
+                if (e.IsText && e.Data.Contains("\"m\":\"ping\""))
+                {
+                    WebSocket socket = sender as WebSocket;
+
+                    if (socket != null && socket.ReadyState == WebSocketState.Open)
+                    {
+                        socket.Send("{\"op\":\"pong\"}");
+                        SendLogMessage(">>> [Pong] Responded to server ping (MarketDepths socket)", LogMessageType.System);
+                    }
+
+                    return;
+                }
+
+                // 5. Обработка всех остальных текстовых сообщений
                 if (e.IsText)
                 {
                     FIFOListWebSocketPublicMarketDepthsMessage.Enqueue(e.Data);
                 }
-
             }
             catch (Exception error)
             {
@@ -1541,44 +1535,42 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                if (ServerStatus == ServerConnectStatus.Disconnect
-                   || e?.Data == null
-                   || string.IsNullOrEmpty(e?.Data))
+                // 1. Проверка отключения, пустого сообщения и очереди
+                if (ServerStatus == ServerConnectStatus.Disconnect ||
+                    e == null ||
+                    string.IsNullOrEmpty(e.Data) ||
+                    FIFOListWebSocketPrivateMessage == null)
                 {
                     return;
                 }
 
-                if (FIFOListWebSocketPrivateMessage == null)
+                // 2. Ответ на ping
+                if (e.IsText && e.Data.Contains("\"m\":\"ping\""))
                 {
-                    return;
-                }
-
-                else if (e.IsText && e.Data.Contains("\"op\":\"auth\"") && e.Data.Contains("\"code\":0"))
-                {
-
-                    SendLogMessage("Authorization to private channels", LogMessageType.System);
-                }
-
-                if (e.Data.Contains("\"m\":\"ping\""))
-                {
-                    if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open)
+                    WebSocket socket = sender as WebSocket;
+                    if (socket != null && socket.ReadyState == WebSocketState.Open)
                     {
-                        _webSocketPrivate.Send("{\"op\":\"pong\"}");
+                        socket.Send("{\"op\":\"pong\"}");
                         SendLogMessage(">>> [Pong] Responded to server ping (Private socket)", LogMessageType.System);
                     }
                     return;
                 }
 
+                // 3. Успешная авторизация
+                if (e.IsText && e.Data.Contains("\"op\":\"auth\"") && e.Data.Contains("\"code\":0"))
+                {
+                    SendLogMessage("Authorization to private channels", LogMessageType.System);
+                }
 
+                // 4. Остальные сообщения — в очередь
                 FIFOListWebSocketPrivateMessage.Enqueue(e.Data);
-
             }
             catch (Exception error)
             {
                 SendLogMessage(error.ToString(), LogMessageType.Error);
-
             }
         }
+
         private void _webSocketPrivate_OnError(object sender, ErrorEventArgs e)
         {
             try
@@ -2108,11 +2100,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 ApplyLevels(update.data.bids, depth.Bids, isBid: true);
                 ApplyLevels(update.data.asks, depth.Asks, isBid: false);
 
-                // Обновляем время и передаём дальше
+              
                 depth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(update.data.ts));
-                //depth.Bids = depth.Bids.OrderByDescending(x => x.Price).Take(25).ToList();
-                //depth.Asks = depth.Asks.OrderBy(x => x.Price).Take(25).ToList();
-                // Сортировка бидов по убыванию и обрезка до 25
+                
                 depth.Bids.Sort((a, b) => b.Price.CompareTo(a.Price));
 
                 List<MarketDepthLevel> topBids = new List<MarketDepthLevel>();
@@ -2582,7 +2572,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (request.StatusCode == HttpStatusCode.OK && response.code != "0")//844629
                 {
-                    SendLogMessage($"Error : {request.ErrorMessage}, StatusCode {request.StatusCode}", LogMessageType.Error);
+                    SendLogMessage($"Error : {request.Content}", LogMessageType.Error);
                     order.State = OrderStateType.Fail;
                     MyOrderEvent?.Invoke(order);
                 }

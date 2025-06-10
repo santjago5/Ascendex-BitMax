@@ -230,8 +230,8 @@ namespace OsEngine.Entity.WebSocketOsEngine
                                 (message.Contains("ping") 
                                  || message.Contains("Ping")))
                             {
-                                // await Send("pong");
-                                await Send("{\"op\":\"pong\"}");
+                                await Send("pong");
+                               // await Send("{\"op\":\"pong\"}");
 
                             }
                             else
