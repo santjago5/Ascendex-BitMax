@@ -25,9 +25,7 @@ using WebSocket = OsEngine.Entity.WebSocketOsEngine.WebSocket;
 using CloseEventArgs = OsEngine.Entity.WebSocketOsEngine.CloseEventArgs;
 using MessageEventArgs = OsEngine.Entity.WebSocketOsEngine.MessageEventArgs;
 using Timer = System.Timers.Timer;
-using static OsEngine.Market.Servers.AscendexSpot.AscendexSpotServerRealization;
-using OsEngine.Market.Servers.Transaq.TransaqEntity;
-using OsEngine.Market.Servers;
+using System.IO;
 
 
 
@@ -104,6 +102,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
+                if (File.Exists("order_trackers.json"))
+                {
+                    string json = File.ReadAllText("order_trackers.json");
+                    _orderTracker = JsonConvert.DeserializeObject<List<OrderTracker>>(json);
+                }
 
                 _publicKey = ((ServerParameterString)ServerParameters[0]).Value;
                 _secretKey = ((ServerParameterPassword)ServerParameters[1]).Value;
@@ -692,10 +695,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     // Проверка: если объект пустой или вернулся неуспешный код
                     if (json == null || json.code != "0" || json.data == null)
                     {
-                        
-                        SendLogMessage($"{ json.code }, {json.data}, Data format error or response code != 0" , LogMessageType.Error );
+
+                        SendLogMessage($"{json.code}, {json.data}, Data format error or response code != 0", LogMessageType.Error);
                         return null;
-                       // return new List<Candle>();
+                        // return new List<Candle>();
                     }
 
                     List<AscendexSpotCandleData> candleList = new List<AscendexSpotCandleData>();
@@ -821,7 +824,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     //{"m":"sub","ch":"depth:1INCH/USDT","code":0}
 
                     FIFOListWebSocketPublicMarketDepthsMessage.TryDequeue(out string message);
-                  
+
                     if (message == null)
                     {
                         continue;
@@ -953,6 +956,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     FIFOListWebSocketPrivateMessage.TryDequeue(out string message);
 
+
+                    SendLogMessage($"Private message received: {message}", LogMessageType.Error);
+
                     if (message == null)
                     {
                         continue;
@@ -1006,12 +1012,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         UpdateOrder(orderMessage);
 
                     }
-                    else if (message.Contains("\"m\":\"balance\""))
-                    {
-                        var portfolioMessage = JsonConvert.DeserializeObject<WebSocketMessage<AscendexSpotPortfolio>>(message);
-
-                        UpdatePortfolio(portfolioMessage);
-                    }
+                   
                 }
                 catch (Exception exception)
                 {
@@ -1429,7 +1430,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
         }
-   
+
         private void WebSocketPublicMarketDepthsNew_OnMessage(object sender, MessageEventArgs e)
         {
             try
@@ -1460,6 +1461,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
+               
                 // 4. Перехват ping-сообщения от сервера и отправка pong
                 if (e.IsText && e.Data.Contains("\"m\":\"ping\""))
                 {
@@ -1472,6 +1474,15 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     }
 
                     return;
+                }
+              
+                if (e.Data.Contains("\"m\":\"balance\""))
+                {
+                    SendLogMessage(">>> [WebSocket] Received balance update: " + e.Data, LogMessageType.Error);
+                }
+                if (e.Data.Contains("\"m\":\"error\""))
+                {
+                    SendLogMessage(">>> [WebSocket ERROR]: " + e.Data, LogMessageType.Error);
                 }
 
                 // 5. Обработка всех остальных текстовых сообщений
@@ -1831,10 +1842,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     && webSocketPublicTrades != null)
                 {
 
-                    webSocketPublicMarketDepths.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
+                   // webSocketPublicMarketDepths.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
                     webSocketPublicMarketDepths.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{security.Name}\"}}");
                     webSocketPublicTrades.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
-                    webSocketPublicTrades.Send($"{{\"op\":\"req\",\"action\":\"market-trades\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");//&&&&&&&&&&
+                  //  webSocketPublicTrades.Send($"{{\"op\":\"req\",\"action\":\"market-trades\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");//&&&&&&&&&&
 
 
                 }
@@ -2100,9 +2111,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 ApplyLevels(update.data.bids, depth.Bids, isBid: true);
                 ApplyLevels(update.data.asks, depth.Asks, isBid: false);
 
-              
+
                 depth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(update.data.ts));
-                
+
                 depth.Bids.Sort((a, b) => b.Price.CompareTo(a.Price));
 
                 List<MarketDepthLevel> topBids = new List<MarketDepthLevel>();
@@ -2338,38 +2349,35 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     SendLogMessage("UpdateOrder> Received empty json", LogMessageType.Error);
                     return;
                 }
-                //if (!_myOrderIds.Contains(json.data.orderId))
+
+                //if (json != null && json.m == "order" && json.data != null)
                 //{
-                //    SendLogMessage("SKIP not my order. MarketId = " + json.data.orderId, LogMessageType.System);
-                //    return;
-                //}
-
-
-                if (json != null && json.m == "order" && json.data != null)
-                {
-                    //action": "cancel-Order",
-                    //action": "cancel-All"
-
+             
                     Order updateOrder = new Order();
 
                     var data = json.data;
-                    OrderTracker tracker = _orderTracker.Find(t => t.OrderNumberMarket == json.data.orderId);
+
+                    OrderTracker tracker = _orderTracker.Find(t => t.OrderNumberMarket == data.orderId);
 
                     if (tracker != null)
                     {
                         updateOrder.NumberUser = tracker.OsOrderNumberUser;
                     }
+                    else
+                    {
+                        updateOrder.NumberUser = 0;
+                    }
 
-                    updateOrder.SecurityNameCode = json.data.s;
-                    updateOrder.SecurityClassCode = GetNameClass(json.data.s);
-                    updateOrder.State = GetOrderState(json.data.st);
-                    updateOrder.NumberMarket = json.data.orderId;
+                    updateOrder.SecurityNameCode = data.s;
+                    updateOrder.SecurityClassCode = GetNameClass(data.s);
+                    updateOrder.State = GetOrderState(data.st);
+                    updateOrder.NumberMarket = data.orderId;
                     //updateOrder.NumberUser = _orderTracker.;
-                    updateOrder.Side = (json.data.sd == "Buy") ? Side.Buy : Side.Sell;
-                    updateOrder.TypeOrder = (json.data.ot == "Limit") ? OrderPriceType.Limit : OrderPriceType.Market;
-                    updateOrder.Price = (json.data.p).ToDecimal();
-                    updateOrder.Volume = (json.data.q).ToDecimal();
-                    updateOrder.TimeCreate = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.data.t));
+                    updateOrder.Side = (data.sd == "Buy") ? Side.Buy : Side.Sell;
+                    updateOrder.TypeOrder = (data.ot == "Limit") ? OrderPriceType.Limit : OrderPriceType.Market;
+                    updateOrder.Price = (data.p).ToDecimal();
+                    updateOrder.Volume = (data.q).ToDecimal();
+                    updateOrder.TimeCreate = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(data.t));
                     updateOrder.ServerType = ServerType.AscendexSpot;
                     updateOrder.PortfolioNumber = "AscendexSpotPortfolio";
 
@@ -2377,27 +2385,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     if (json.data.st == "PartiallyFilled" || json.data.st == "Filled")
                     {
+                        UpdateMyTrade(data);
 
-                        if (string.IsNullOrEmpty(data.cfq) || string.IsNullOrEmpty(data.ap))
-                        {
-                            SendLogMessage("UpdateOrder> Trade skipped due to missing data (cfq or ap)", LogMessageType.Error);
-                            return;
-                        }
-
-                        MyTrade myTrade = new MyTrade
-                        {
-                            NumberOrderParent = data.orderId,
-                            Side = data.sd == "Buy" ? Side.Buy : Side.Sell,
-                            SecurityNameCode = data.s,
-                            Price = data.ap.ToDecimal(),
-                            Volume = data.cfq.ToDecimal(),
-                            NumberTrade = data.sn.ToString(),
-                            Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(data.t)),
-                        };
-
-                        MyTradeEvent?.Invoke(myTrade);
                     }
-                }
+                    UpdatePortfolioFromOrder(data);
+               // }
             }
             catch (Exception exception)
             {
@@ -2405,50 +2397,168 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-        private void UpdatePortfolio(WebSocketMessage<AscendexSpotPortfolio> json)
+        private void UpdateMyTrade(AscendexSpotOrderData data)
+        {
+            try
+            { 
+                if (string.IsNullOrEmpty(data.cfq) || string.IsNullOrEmpty(data.ap))
+                {
+                    SendLogMessage("UpdateOrder> Trade skipped due to missing data (cfq or ap)", LogMessageType.Error);
+                    return;
+                }
+
+                MyTrade myTrade = new MyTrade
+                {
+                    NumberOrderParent = data.orderId,
+                    Side = data.sd == "Buy" ? Side.Buy : Side.Sell,
+                    SecurityNameCode = data.s,
+                    Price = data.ap.ToDecimal(),
+                    Volume = data.cfq.ToDecimal(),
+                    NumberTrade = data.sn.ToString(),
+                    Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(data.t)),
+                };
+                MyTradeEvent?.Invoke(myTrade);
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage("UpdateMyTrade> Error: " + exception.Message, LogMessageType.Error);
+            }
+        }
+
+        private void UpdatePortfolioFromOrder(AscendexSpotOrderData data)
         {
             try
             {
-                if (json == null)
+                if (data == null)
                 {
                     return;
                 }
 
+                // создаём новый портфель
                 Portfolio portfolio = new Portfolio();
-
                 portfolio.Number = "AscendexSpotPortfolio";
                 portfolio.ValueBegin = 1;
                 portfolio.ValueCurrent = 1;
                 portfolio.ServerType = ServerType.AscendexSpot;
 
-
-                if (json != null && json.m == "balance" && json.data != null)
+                string[] parts = data.s.Split('/');
+                if (parts.Length == 2)
                 {
+                    string baseAsset = parts[0];
+                    string quoteAsset = parts[1];
 
-                    PositionOnBoard position = new PositionOnBoard();
+                    PositionOnBoard basePos = new PositionOnBoard();
+                    basePos.PortfolioName = portfolio.Number;
+                    basePos.SecurityNameCode = baseAsset;
+                    basePos.ValueBegin = data.btb.ToDecimal();
+                    basePos.ValueCurrent = data.bab.ToDecimal();
+                    basePos.ValueBlocked = basePos.ValueBegin - basePos.ValueCurrent;
+                    portfolio.SetNewPosition(basePos);
 
-                    position.PortfolioName = "AscendexSpotPortfolio";
-                    position.SecurityNameCode = json.data.a;
-                    position.ValueCurrent = json.data.ab.ToString().ToDecimal();
-                    position.ValueBegin = json.data.tb.ToString().ToDecimal();
-
-                    position.ValueBlocked = position.ValueBegin.ToString().ToDecimal() - position.ValueCurrent.ToString().ToDecimal();
-
-                    portfolio.SetNewPosition(position);
-
-                    _portfolios.Add(portfolio);
+                    PositionOnBoard quotePos = new PositionOnBoard();
+                    quotePos.PortfolioName = portfolio.Number;
+                    quotePos.SecurityNameCode = quoteAsset;
+                    quotePos.ValueBegin = data.qtb.ToDecimal();
+                    quotePos.ValueCurrent = data.qab.ToDecimal();
+                    quotePos.ValueBlocked = quotePos.ValueBegin - quotePos.ValueCurrent;
+                    portfolio.SetNewPosition(quotePos);
                 }
+                _portfolios.Add(portfolio);
+                PortfolioEvent?.Invoke(_portfolios);
 
-                if (_portfolios.Count > 0)
-                {
-                    PortfolioEvent?.Invoke(_portfolios);
-                }
+                //string[] parts = data.s.Split('/');
+                //if (parts.Length == 2)
+                //{
+                //    string baseAsset = parts[0];
+                //    string quoteAsset = parts[1];
+                //    // создаём позицию по активу
+                //    PositionOnBoard position = new PositionOnBoard();
+                //    position.PortfolioName = portfolio.Number;
+                //    position.SecurityNameCode = baseAsset;
+                //    position.ValueBegin = data.btb.ToDecimal();
+                //    position.ValueCurrent = data.bab.ToDecimal();
+                //    position.ValueBlocked = position.ValueBegin - position.ValueCurrent;
+
+                //    portfolio.SetNewPosition(position);
+                //    //"qtb":"1.71759708","qab":"1.71759708"
+                //    // сохраняем и вызываем событие
+                //    _portfolios.Add(portfolio);
+                //    PortfolioEvent?.Invoke(_portfolios);
+
+
+                //    SendLogMessage($"UpdatePortfolio: {data.s}, Total: {data.btb}, Available: {data.bab}", LogMessageType.System);
+                //}
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage("UpdatePortfolio> Error: " + exception.Message, LogMessageType.Error);
             }
         }
+
+
+        //private void UpdatePortfolio(WebSocketMessage<AscendexSpotPortfolio> json)
+        //{
+        //    try
+        //    {
+        //        if (json == null || json.m != "balance" || json.data == null)
+        //        {
+        //            return;
+        //        }
+
+        //        Portfolio portfolio = _portfolios.Find(p => p.Number == "AscendexSpotPortfolio");
+
+        //        if (portfolio == null)
+        //        {
+        //            portfolio = new Portfolio
+        //            {
+        //                Number = "AscendexSpotPortfolio",
+        //                ValueBegin = 1,
+        //                ValueCurrent = 1,
+        //                ServerType = ServerType.AscendexSpot
+        //            };
+        //            _portfolios.Add(portfolio);
+        //        }
+        //        //if (json != null && json.m == "balance" && json.data != null)
+        //        //{
+        //        //обновление позиции
+        //        //PositionOnBoard position = new PositionOnBoard();
+
+        //        //position.PortfolioName = "AscendexSpotPortfolio";
+        //        //position.SecurityNameCode = json.data.a;
+        //        //position.ValueCurrent = json.data.ab.ToString().ToDecimal();
+        //        //position.ValueBegin = json.data.tb.ToString().ToDecimal();
+
+        //        //position.ValueBlocked = position.ValueBegin.ToString().ToDecimal() - position.ValueCurrent.ToString().ToDecimal();
+
+        //        //portfolio.SetNewPosition(position);
+
+        //        /////
+        //        PositionOnBoard position = new PositionOnBoard
+        //        {
+        //            PortfolioName = portfolio.Number,
+        //            SecurityNameCode = json.data.a,
+        //            ValueBegin = json.data.tb.ToString().ToDecimal(),
+        //            ValueCurrent = json.data.ab.ToString().ToDecimal(),
+        //        };
+        //        position.ValueBlocked = position.ValueBegin - position.ValueCurrent;
+
+        //        portfolio.SetNewPosition(position);
+
+        //        PortfolioEvent?.Invoke(_portfolios);
+
+
+        //        //// }
+
+        //        //if (_portfolios.Count > 0)
+        //        //{
+        //        //    PortfolioEvent?.Invoke(_portfolios);
+        //        //}
+        //    }
+        //    catch (Exception exception)
+        //    {
+        //        SendLogMessage(exception.ToString(), LogMessageType.Error);
+        //    }
+        //}
 
         #endregion
 
@@ -2570,7 +2680,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 AscendexSpotOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(request.Content);
 
-                if (request.StatusCode == HttpStatusCode.OK && response.code != "0")//844629
+                if (request.StatusCode == HttpStatusCode.OK && response.code != "0")
                 {
                     SendLogMessage($"Error : {request.Content}", LogMessageType.Error);
                     order.State = OrderStateType.Fail;
@@ -2593,6 +2703,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         _orderTracker.Add(orderTracker);
                         order.State = GetOrderState(response.data.status);
                         order.NumberMarket = response.data.info.orderId;
+
+                        string json = JsonConvert.SerializeObject(_orderTracker);
+                        File.WriteAllText("order_trackers.json", json);
 
                         // Записываем построчно в CSV-файл с датой
                         try
@@ -2625,7 +2738,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     }
 
                     //GetOrderState(order.NumberMarket);
-                    MyOrderEvent?.Invoke(order);
+                    // MyOrderEvent?.Invoke(order);
                 }
                 //else
                 //{
@@ -2679,6 +2792,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     SendLogMessage($"Error Order canceled {response.StatusCode}", LogMessageType.Error);
                 }
+                GetPortfolios();
             }
             catch (Exception exception)
             {
@@ -2691,6 +2805,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             try
             {
                 _rateGateCancelOrder.WaitToProceed();
+
                 string accountGroup = GetAccountGroup();
 
                 string path = $"/{accountGroup}/api/pro/v1/cash/order";
@@ -2720,18 +2835,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
 
                 IRestResponse response = CreatePrivateQuery(path, body, accountGroup, null, Method.DELETE/*, _myProxy*/);
-                //{\"code\":100004,\"message\":\"Invalid Http Request Input\"}"
 
                 if (response == null)
                 {
-
-                    // GetOrderStatus(order);
-                    //  GetOrderState(order.NumberMarket);
-                    // SendLogMessage("CancelOrder> Deserialization resulted in null", LogMessageType.Error);
                     return;
                 }
-
-
 
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
@@ -2751,7 +2859,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             Order cancelOrd = new Order();
 
                             cancelOrd.NumberMarket = cancelResult.data.info.orderId;
-                            cancelOrd.NumberUser = order.NumberUser;//(OrderTracker.OsOrderNumberUser).ToString(); 
+                          //  cancelOrd.NumberUser = order.NumberUser;//(OrderTracker.OsOrderNumberUser).ToString(); 
                             cancelOrd.TimeCancel = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(cancelResult.data.info.timestamp));
 
                             //CancelOrderSuccessResponse success = JsonConvert.DeserializeObject<CancelOrderSuccessResponse>(response.Content);
@@ -2771,7 +2879,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 else
                 {
                     GetOrderStatus(order);
-
                     SendLogMessage($" Error Order cancellation:  {response.Content},{response.ErrorMessage}", LogMessageType.Error);
                 }
 
@@ -2869,20 +2976,21 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         for (int i = 0; i < result.data.Count; i++)
                         {
                             AscendexSpotOrderInfo order = result.data[i];
-                            OrderTracker orderTracker = _orderTracker.Find(c => c.OrderNumberMarket == order.orderId);
+                            //OrderTracker orderTracker = _orderTracker.Find(c => c.OrderNumberMarket == order.orderId);
 
 
-                            if (orderTracker == null)
-                            {
-                                SendLogMessage("orderTracker == null", LogMessageType.Error);
-                            }
+                            //if (orderTracker == null)
+                            //{
+                                
+                            //    SendLogMessage("orderTracker == null", LogMessageType.Error);
+                            //}
 
                             Order activeOrder = new Order();
                             activeOrder.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(order.lastExecTime));
                             activeOrder.ServerType = ServerType.AscendexSpot;
                             activeOrder.SecurityNameCode = order.symbol;
                             activeOrder.NumberMarket = order.orderId;
-                            activeOrder.NumberUser = orderTracker.OsOrderNumberUser; //GetNumberUserByOrderId(order.orderId);
+                            //activeOrder.NumberUser = orderTracker.OsOrderNumberUser; //GetNumberUserByOrderId(order.orderId);
                             activeOrder.Side = order.side == "Buy" ? Side.Buy : Side.Sell;
                             activeOrder.State = GetOrderState(order.status);
                             activeOrder.TypeOrder = order.orderType == "Limit" ? OrderPriceType.Limit : OrderPriceType.Market;
@@ -2891,7 +2999,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             activeOrder.PortfolioNumber = "AscendexSpotPortfolio";
 
                             orders.Add(activeOrder);
-
 
                             try
                             {
