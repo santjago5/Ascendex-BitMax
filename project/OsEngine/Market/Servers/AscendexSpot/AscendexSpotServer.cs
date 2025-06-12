@@ -2350,8 +2350,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
-                //if (json != null && json.m == "order" && json.data != null)
-                //{
              
                     Order updateOrder = new Order();
 
@@ -2389,7 +2387,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     }
                     UpdatePortfolioFromOrder(data);
-               // }
+              
             }
             catch (Exception exception)
             {
