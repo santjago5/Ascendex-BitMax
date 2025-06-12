@@ -26,6 +26,8 @@ using CloseEventArgs = OsEngine.Entity.WebSocketOsEngine.CloseEventArgs;
 using MessageEventArgs = OsEngine.Entity.WebSocketOsEngine.MessageEventArgs;
 using Timer = System.Timers.Timer;
 using System.IO;
+using OsEngine.Market.Servers.YahooFinance.Entity;
+using System.Security.Policy;
 
 
 
@@ -378,8 +380,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
 
             string fullPath = $"/api/pro/v1/info";
-
-            IRestResponse response = CreatePrivateQuery(fullPath, null, null, null, Method.GET/*, null*/);
+            string prehashPath = "info";
+            IRestResponse response = CreatePrivateQuery(fullPath, prehashPath, null, Method.GET/*, null*/);
 
             if (response == null || response.StatusCode != HttpStatusCode.OK)
             {
@@ -435,8 +437,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string accountGroup = GetAccountGroup();
                 string fullPath = $"/{accountGroup}/api/pro/v1/cash/balance";
+                string prehashPath = "balance";
 
-                IRestResponse response = CreatePrivateQuery(fullPath, null, null, accountGroup, Method.GET/*, _myProxy*/);
+                IRestResponse response = CreatePrivateQuery(fullPath, prehashPath, null, Method.GET/*, _myProxy*/);
 
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
@@ -925,7 +928,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     FIFOListWebSocketPrivateMessage.TryDequeue(out string message);
 
 
-                    SendLogMessage($"Private message received: {message}", LogMessageType.Error);
+                    SendLogMessage($"Private message received: {message}", LogMessageType.User);
 
                     if (message == null)
                     {
@@ -2368,7 +2371,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     NumberTrade = data.sn.ToString(),
                     Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(data.t))
                 };
-                
+
                 MyTradeEvent?.Invoke(myTrade);
             }
             catch (Exception exception)
@@ -2496,9 +2499,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         #region  11 Trade
         public void SendOrder(Order order)
-
         {
             _rateGateOrder.WaitToProceed();
+
             try
             {
                 string accountGroup = GetAccountGroup();
@@ -2508,7 +2511,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string body;
 
-                //  if (order.TypeOrder == OrderPriceType.Limit)
                 if (typeOrder == "Limit")
                 {
                     body = $"{{" +
@@ -2535,8 +2537,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
 
                 string fullPath = $"/{accountGroup}/api/pro/v1/cash/order";
+                string prehashPath = "order";
 
-                IRestResponse request = CreatePrivateQuery(fullPath, body, accountGroup, null, Method.POST);
+                IRestResponse request = CreatePrivateQuery(fullPath, prehashPath, body, Method.POST);
 
                 if (request == null)
                 {
@@ -2630,11 +2633,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string accountGroup = GetAccountGroup();
 
                 string accountCategory = "cash";
-
                 string path = $"/{accountGroup}/api/pro/v1/{accountCategory}/order/all";
+                string prehashPath = "order/all";
 
-
-                IRestResponse response = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.DELETE/*, _myProxy*/);
+                IRestResponse response = CreatePrivateQuery(path, prehashPath, null, Method.DELETE/*, _myProxy*/);
 
                 if (response == null)
                 {
@@ -2676,7 +2678,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string accountGroup = GetAccountGroup();
 
                 string path = $"/{accountGroup}/api/pro/v1/cash/order";
-
+                string prehashPath = "order";
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 string body;
 
@@ -2684,24 +2686,25 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 if (order.TypeOrder == OrderPriceType.Limit)
                 {
                     body = $"{{" +
-                           $"\"orderId\": \"{order.NumberMarket.ToString()}\", " +                   // orderId — обязательный
-                           $"\"orderType\": \"{order.TypeOrder.ToString()}\", " +                   // orderType — только если это Limit
-                           $"\"symbol\": \"{order.SecurityNameCode}\", " +                          // symbol — обязательный
-                           $"\"time\": {time}, " +                                                  // time — обязательный
-                           $"\"orderNumberUser\": \"{order.NumberUser.ToString()}\"" +              // НЕобязательное поле (если оно поддерживается)
+                           $"\"orderId\": \"{order.NumberMarket.ToString()}\", " +
+                           $"\"orderType\": \"{order.TypeOrder.ToString()}\", " +
+                           $"\"symbol\": \"{order.SecurityNameCode}\", " +
+                           $"\"time\": {time}, " +
+                           $"\"orderNumberUser\": \"{order.NumberUser.ToString()}\"" +
                            $"}}";
                 }
                 else
                 {
                     body = $"{{" +
-                           $"\"orderId\": \"{order.NumberMarket.ToString()}\", " +                  // orderId
-                           $"\"symbol\": \"{order.SecurityNameCode}\", " +                          // symbol
-                           $"\"time\": {time}, " +                                                  // time
-                           $"\"orderNumberUser\": \"{order.NumberUser.ToString()}\"" +              // user id
+                           $"\"orderId\": \"{order.NumberMarket.ToString()}\", " +
+                           $"\"symbol\": \"{order.SecurityNameCode}\", " +
+                           $"\"time\": {time}, " +
+                           $"\"orderNumberUser\": \"{order.NumberUser.ToString()}\"" +
                            $"}}";
                 }
 
-                IRestResponse response = CreatePrivateQuery(path, body, accountGroup, null, Method.DELETE/*, _myProxy*/);
+
+                IRestResponse response = CreatePrivateQuery(path, prehashPath, body, Method.DELETE/*, _myProxy*/);
 
                 if (response == null)
                 {
@@ -2764,15 +2767,15 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 string accountGroup = GetAccountGroup();
                 string accountCategory = "cash";
-
                 string path = $"/{accountGroup}/api/pro/v1/{accountCategory}/order/all";
+                string prehashPath = "order/all";
 
                 string body = $"{{" +
                               $"\"symbol\": \"{security.Name}\"" +
                               $"}}";
 
 
-                IRestResponse response = CreatePrivateQuery(path, body, accountGroup, accountCategory, Method.DELETE/*, _myProxy*/);
+                IRestResponse response = CreatePrivateQuery(path, prehashPath, body, Method.DELETE/*, _myProxy*/);
 
                 if (response == null)
                 {
@@ -2820,8 +2823,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string accountGroup = GetAccountGroup();
                 string accountCategory = "cash";
                 string path = $"/{accountGroup}/api/pro/v1/cash/order/open";
-
-                IRestResponse response = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET/*, _myProxy*/);
+                string prehashPath = "order/open";
+                IRestResponse response = CreatePrivateQuery(path, prehashPath, null, Method.GET/*, _myProxy*/);
 
                 if (response == null)
                 {
@@ -3025,9 +3028,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string accountCategory = "cash";
 
                 string path = $"/{accountGroup}/api/pro/v1/cash/order/status?orderId={order.NumberMarket}";
+                string prehashPath = "order/status";
 
-
-                IRestResponse request = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET);
+                IRestResponse request = CreatePrivateQuery(path, prehashPath, null, Method.GET);
 
                 if (request == null)
                 {
@@ -3152,9 +3155,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string accountGroup = GetAccountGroup();
                 string accountCategory = "cash";
                 string path = $"/{accountGroup}/api/pro/v1/cash/order/hist/current";
+                string prehashPath = "order/hist/current";
 
-
-                IRestResponse response = CreatePrivateQuery(path, null, accountGroup, accountCategory, Method.GET/*, _myProxy*/);
+                IRestResponse response = CreatePrivateQuery(path, prehashPath, null, Method.GET/*, _myProxy*/);
 
                 if (response == null)
                 {
@@ -3310,59 +3313,59 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
 
-        private readonly Dictionary<string, string> SignaturePaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
+        //private readonly Dictionary<string, string> SignaturePaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        //{
 
-            ["/1/api/pro/v1/cash/order"] = "order",
-            ["/1/api/pro/v1/margin/order"] = "order",
-            ["/1/api/pro/v1/cash/order/all"] = "order/all",
-            ["/1/api/pro/v1/margin/order/all"] = "order/all",
-            ["/1/api/pro/v1/cash/order/status"] = "order/status",
-            ["/1/api/pro/v1/margin/order/status"] = "order/status",
-            ["/1/api/pro/v1/cash/order/open"] = "order/open",
-            ["/1/api/pro/v1/margin/order/open"] = "order/open",
-            ["/1/api/pro/v1/cash/order/hist/current"] = "order/hist/current",
-            ["/1/api/pro/v1/margin/order/hist/current"] = "order/hist/current",
-            ["/api/pro/data/v2/order/hist"] = "data/v2/order/hist",
-            ["/api/pro/data/v1/cash/balance/snapshot"] = "data/v1/cash/balance/snapshot",
-            ["/api/pro/data/v1/margin/balance/snapshot"] = "data/v1/margin/balance/snapshot",
-            ["/api/pro/data/v1/cash/balance/history"] = "data/v1/cash/balance/history",
-            ["/api/pro/data/v1/margin/balance/history"] = "data/v1/margin/balance/history",
-            ["/1/api/pro/v1/cash/balance"] = "balance", //[$"/{accountGroup}/api/pro/v1/cash/balance"] = "balance"
-            ["/1/api/pro/v1/margin/balance"] = "balance",
-
-
-        };
-
-        private string BuildPrehashMessage(string fullPath, long timestamp)
-        {
-            string pathOnly = fullPath.Contains("?")
-        ? fullPath.Substring(0, fullPath.IndexOf("?", StringComparison.Ordinal))
-        : fullPath;
+        //    ["/1/api/pro/v1/cash/order"] = "order",
+        //    ["/1/api/pro/v1/margin/order"] = "order",
+        //    ["/1/api/pro/v1/cash/order/all"] = "order/all",
+        //    ["/1/api/pro/v1/margin/order/all"] = "order/all",
+        //    ["/1/api/pro/v1/cash/order/status"] = "order/status",
+        //    ["/1/api/pro/v1/margin/order/status"] = "order/status",
+        //    ["/1/api/pro/v1/cash/order/open"] = "order/open",
+        //    ["/1/api/pro/v1/margin/order/open"] = "order/open",
+        //    ["/1/api/pro/v1/cash/order/hist/current"] = "order/hist/current",
+        //    ["/1/api/pro/v1/margin/order/hist/current"] = "order/hist/current",
+        //    ["/api/pro/data/v2/order/hist"] = "data/v2/order/hist",
+        //    ["/api/pro/data/v1/cash/balance/snapshot"] = "data/v1/cash/balance/snapshot",
+        //    ["/api/pro/data/v1/margin/balance/snapshot"] = "data/v1/margin/balance/snapshot",
+        //    ["/api/pro/data/v1/cash/balance/history"] = "data/v1/cash/balance/history",
+        //    ["/api/pro/data/v1/margin/balance/history"] = "data/v1/margin/balance/history",
+        //    ["/1/api/pro/v1/cash/balance"] = "balance", //[$"/{accountGroup}/api/pro/v1/cash/balance"] = "balance"
+        //    ["/1/api/pro/v1/margin/balance"] = "balance",
 
 
-            string prehashPath;
+        //};
 
-            //  Если путь есть в словаре — используем его
-            if (SignaturePaths.TryGetValue(pathOnly, out prehashPath))
-            {
-                return $"{timestamp}+{prehashPath}";
-            }
+        //private string BuildPrehashMessage(string fullPath, long timestamp)
+        //{
+        //    string pathOnly = fullPath.Contains("?")
+        //? fullPath.Substring(0, fullPath.IndexOf("?", StringComparison.Ordinal))
+        //: fullPath;
 
-            //  Если нет — извлекаем всё после /v1/
-            int idx = fullPath.IndexOf("/v1/", StringComparison.OrdinalIgnoreCase);
-            prehashPath = (idx >= 0) ? fullPath.Substring(idx + 4) : fullPath.Trim('/');
 
-            return $"{timestamp}+{prehashPath}";
-        }
+        //    string prehashPath;
 
-        private IRestResponse CreatePrivateQuery(string fullPath, object body = null, string accountGroup = null, string accountCategory = null, Method method = Method.GET)
+        //    //  Если путь есть в словаре — используем его
+        //    if (SignaturePaths.TryGetValue(pathOnly, out prehashPath))
+        //    {
+        //        return $"{timestamp}+{prehashPath}";
+        //    }
+
+        //    //  Если нет — извлекаем всё после /v1/
+        //    int idx = fullPath.IndexOf("/v1/", StringComparison.OrdinalIgnoreCase);
+        //    prehashPath = (idx >= 0) ? fullPath.Substring(idx + 4) : fullPath.Trim('/');
+
+        //    return $"{timestamp}+{prehashPath}";
+        //}
+
+        private IRestResponse CreatePrivateQuery(string fullPath, string prehashPath, object body = null, Method method = Method.GET)
         {
             try
             {
                 long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-                string message = BuildPrehashMessage(fullPath, timestamp);
+                string message = timestamp + prehashPath;// = BuildPrehashMessage(fullPath, timestamp);
 
                 string signature = GenerateSignature(message, _secretKey);
 
