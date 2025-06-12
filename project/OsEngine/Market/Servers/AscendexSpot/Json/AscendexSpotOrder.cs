@@ -7,7 +7,7 @@ using Newtonsoft.Json;
 
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
-    // Класс для корневого объекта ответа / Root response object
+   
     public class AscendexSpotOrderResponse
     {
         public string code { get; set; }             // Код ответа / Response code
@@ -24,7 +24,7 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string status { get; set; }           // Статус запроса (например, ACCEPT) / Request status (e.g. ACCEPT)
     }
 
-    // Класс для свойства 'info' / Class for 'info' field
+   
     public class AscendexSpotOrderInfo
     {
         public string avgPx { get; set; }            // Средняя цена / Average price
@@ -52,21 +52,6 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public List<AscendexSpotOrderInfo> data { get; set; }
     }
 
-    //public class AscendexSpotOrderErrorResponse
-    //{
-    //    public string code { get; set; }         // Код ошибки / Error code
-    //    public string message { get; set; }      // Сообщение об ошибке / Error message
-    //    public string reason { get; set; }       // Причина / Reason
-    //    public string accountId { get; set; }    // ID аккаунта / Account ID
-    //    public string ac { get; set; }           // Тип аккаунта / Account type
-    //}
-
-    // Класс для успешного ответа отмены ордера
-  
-
-  
-  
-    // Класс для ошибки отмены ордера
     public class AscendexSpotCancelOrderResponse
     {
         public string code { get; set; }
@@ -76,7 +61,6 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string status { get; set; }
         public string message { get; set; }
         public string reason { get; set; }
-        public AscendexSpotCancelOrderErrorInfo info { get; set; }
         public AscendexSpotCancelOrderData data { get; set; }
     }
 
@@ -97,12 +81,4 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string status { get; set; }
         public AscendexSpotCancelOrderInfo info { get; set; }
     }
-
-
-    public class AscendexSpotCancelOrderErrorInfo
-    {
-        public string id { get; set; }
-        public string symbol { get; set; }
-    }
-
 }

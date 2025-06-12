@@ -6,25 +6,26 @@ using System.Threading.Tasks;
 
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
-   public class WebSocketMessage<T>
-        {
-            public string m { get; set; }           //type message  "order", "balance" - Тип сообщения: "order", "balance"
-            public string accountId { get; set; }   // ID account -id аккаунта
-            public string ac { get; set; }          //type account "CASH / MARGIN" -Тип аккаунта: CASH / MARGIN
-            public T data { get; set; }             // different type data - Данные (разные типы)
-        }
-
-        public class AscendexSpotMyTradeData
+    public class WebSocketMessage<T>
     {
-            public string s { get; set; }           //
-            public string p { get; set; }           //
-            public string q { get; set; }           //
-            public string side { get; set; }        //
-            public string orderId { get; set; }     //
-            public string t { get; set; }           //
-        }
-        public class AscendexSpotOrderData
-        {
+        public string m { get; set; }           //type message  "order", "balance" - Тип сообщения: "order", "balance"
+        public string accountId { get; set; }   // ID account -id аккаунта
+        public string ac { get; set; }          //type account "CASH / MARGIN" -Тип аккаунта: CASH / MARGIN
+        public T data { get; set; }             // different type data - Данные (разные типы)
+    }
+
+    public class AscendexSpotMyTradeData
+    {
+        public string s { get; set; }           //
+        public string p { get; set; }           //
+        public string q { get; set; }           //
+        public string side { get; set; }        //
+        public string orderId { get; set; }     //
+        public string t { get; set; }           //
+    }
+
+    public class AscendexSpotOrderData
+    {
         public string s { get; set; }     // symbol "BTC/USDT"
         public string sn { get; set; }    // sequence number "8159711" — уникальный номер события
         public string ap { get; set; }    // average fill price "0" — средняя цена исполнения
@@ -49,13 +50,13 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
     }
 
     public class AscendexSpotPortfolio
-        {
-            public string a { get; set; }     //asset "USDT"
-            public string sn { get; set; }     //sequence number "8159798"
-            public string tb { get; set; }   //total balance "600"
-            public string ab { get; set; }   //available balance "600"
-        }
+    {
+        public string a { get; set; }     //asset "USDT"
+        public string sn { get; set; }     //sequence number "8159798"
+        public string tb { get; set; }   //total balance "600"
+        public string ab { get; set; }   //available balance "600"
+    }
 
 
-  }
+}
 
