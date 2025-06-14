@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
@@ -26,18 +27,25 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
 
     public class AscendexSpotOrderData
     {
-        public string s { get; set; }     // symbol "BTC/USDT"
+        [JsonProperty("s")]
+        public string Symbol { get; set; }     // symbol "BTC/USDT"
         public string sn { get; set; }    // sequence number "8159711" — уникальный номер события
         public string ap { get; set; }    // average fill price "0" — средняя цена исполнения
         public string bab { get; set; }   // base asset available balance  "2006.5974027"— доступный базовый актив
         public string btb { get; set; }   // base asset total balance  "2006.5974027" — общий базовый актив
         public string cf { get; set; }    // cumulated commission  "0" — суммарная комиссия
-        public string cfq { get; set; }   // cumulated filled qty  "0" — суммарное исполненное количество
+
+        [JsonProperty("cfq")]
+        public string Quantity { get; set; }   // cumulated filled qty  "0" — суммарное исполненное количество
         public string err { get; set; }   // error code ""— код ошибки (может быть пустым)
         public string fa { get; set; }    // fee asset "USDT"— актив, в котором взята комиссия
         public string orderId { get; set; } // order id "s16ef210b1a50866943712bfaf1584b" — уникальный идентификатор ордера
-        public string ot { get; set; }    // order type "Market, Limit"— тип ордера (например: Market, Limit)
-        public string p { get; set; }     // order price  "7967.62"— цена ордера
+
+        [JsonProperty("ot")]
+        public string OrderType { get; set; }    // order type "Market, Limit"— тип ордера (например: Market, Limit)
+
+        [JsonProperty("p")]
+        public string Price { get; set; }     // order price  "7967.62"— цена ордера
         public string q { get; set; }     // order quantity "0.0083"— запрошенное количество
         public string qab { get; set; }   // quote asset available balance "793.23"— доступный котируемый актив
         public string qtb { get; set; }   // quote asset total balance "860.23"— общий котируемый актив
