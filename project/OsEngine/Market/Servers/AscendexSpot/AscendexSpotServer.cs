@@ -338,7 +338,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             newSecurity.PriceStep = securityList.data[i].tickSize.ToString().ToDecimal();
                             newSecurity.Decimals = price.DecimalsCount() == 0 ? 1 : price.DecimalsCount();
                             newSecurity.PriceStepCost = newSecurity.PriceStep;
-                            newSecurity.DecimalsVolume = Convert.ToInt32(securityList.data[i].priceScale);
+                            newSecurity.DecimalsVolume = Convert.ToInt32(securityList.data[i].qtyScale);
                             newSecurity.MinTradeAmount = securityList.data[i].minQty.ToString().ToDecimal();
                             newSecurity.MinTradeAmountType = MinTradeAmountType.Contract;
                             newSecurity.VolumeStep = newSecurity.DecimalsVolume.GetValueByDecimals();
@@ -3305,7 +3305,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 string payload = timestamp + "+stream";
-                //string signature = CreateSignatureBase64(_secretKey, payload);
                 string signature = GenerateSignature(payload, _secretKey);
                 string idGuid = Guid.NewGuid().ToString();
 
@@ -3328,18 +3327,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage(exception.ToString(), LogMessageType.Error);
             }
         }
-
-        //public static string CreateSignatureBase64(string secret, string payload)
-        //{
-        //    byte[] keyBytes = Encoding.UTF8.GetBytes(secret);
-        //    byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
-
-        //    using (var hmac = new HMACSHA256(keyBytes))
-        //    {
-        //        byte[] hash = hmac.ComputeHash(payloadBytes);
-        //        return Convert.ToBase64String(hash);
-        //    }
-        //}
 
         static string GenerateSignature(string message, string secret)
         {
