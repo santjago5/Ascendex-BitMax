@@ -510,31 +510,104 @@ namespace OsEngine.Market.Servers.AscendexSpot
             return GetCandleHistory(security.NameFull, timeFrameBuilder.TimeFrameTimeSpan, true, countNeedToLoad, endTime);
         }
 
+        //public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
+        //{
+        //    string timeFrame = GetInterval(tf);  // Интервал в формате API
+        //    int limit = 480;                     // Лимит за 1 запрос
+
+        //    List<Candle> allCandles = new List<Candle>(); // Общий список свечей
+        //    HashSet<DateTime> uniqueTimes = new HashSet<DateTime>(); // Для исключения дубликатов
+
+        //    int candlesLoaded = 0;
+        //    DateTime periodEnd = timeEnd; // Начнем с заданного конца
+
+
+        //    if (periodEnd > DateTime.UtcNow)
+        //    {
+        //        periodEnd = DateTime.UtcNow;
+        //    }
+        //    while (candlesLoaded < countToLoad)
+        //    {
+        //        // Сколько свечей нужно запросить в этой итерации
+        //        int candlesToLoad = Math.Min(limit, countToLoad - candlesLoaded);
+
+        //        // Получаем порцию свечей до periodEnd
+        //        List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, periodEnd, candlesToLoad);
+
+        //        // Если ошибка или пусто — прекращаем
+        //        if (rangeCandles == null || rangeCandles.Count == 0)
+        //        {
+        //            break;
+        //        }
+
+        //        // Добавляем только уникальные свечи
+        //        for (int i = 0; i < rangeCandles.Count; i++)
+        //        {
+        //            if (uniqueTimes.Add(rangeCandles[i].TimeStart))
+        //            {
+        //                allCandles.Add(rangeCandles[i]);
+        //            }
+        //        }
+
+        //        candlesLoaded += rangeCandles.Count;
+
+        //        // Следующий "конец" периода — начало первой свечи из этого блока
+        //        periodEnd = rangeCandles[0].TimeStart;
+
+        //        // Если ушли раньше нужного диапазона — завершаем
+        //        if (periodEnd <= timeEnd - TimeSpan.FromMinutes(tf.TotalMinutes * countToLoad))
+        //        {
+        //            break;
+        //        }
+        //    }
+
+        //    // Удаляем свечи позже указанного времени
+        //    for (int i = allCandles.Count - 1; i >= 0; i--)
+        //    {
+        //        if (allCandles[i].TimeStart > timeEnd)
+        //        {
+        //            allCandles.RemoveAt(i);
+        //        }
+        //    }
+
+        //    // Сортировка на случай, если порядок сбился
+        //    allCandles.Sort((a, b) => a.TimeStart.CompareTo(b.TimeStart));
+
+        //    return allCandles;
+        //}
+
         public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
         {
-            string timeFrame = GetInterval(tf);  // Интервал в формате API
-            int limit = 480;                     // Лимит за 1 запрос
+            // Преобразуем таймфрейм в строку (например: "1", "5", "1d")
+            string timeFrame = GetInterval(tf);
 
-            List<Candle> allCandles = new List<Candle>(); // Общий список свечей
-            HashSet<DateTime> uniqueTimes = new HashSet<DateTime>(); // Для исключения дубликатов
+            // Ограничение сервера: максимум 480 свечей за раз
+            int limit = 480;
 
+            // Список всех свечей
+            List<Candle> allCandles = new List<Candle>();
+
+            // Для исключения дубликатов по времени
+            HashSet<DateTime> uniqueTimes = new HashSet<DateTime>();
+
+            // Кол-во загруженных свечей
             int candlesLoaded = 0;
-            DateTime periodEnd = timeEnd; // Начнем с заданного конца
 
+            // Конечная точка текущего запроса
+            DateTime periodEnd = timeEnd;
 
-            if (periodEnd > DateTime.UtcNow)
-            {
-                periodEnd = DateTime.UtcNow;
-            }
+            // Начальная граница диапазона
+            DateTime periodStart = timeEnd.AddMinutes(-countToLoad * tf.TotalMinutes);
+
             while (candlesLoaded < countToLoad)
             {
-                // Сколько свечей нужно запросить в этой итерации
+                // Сколько осталось загрузить
                 int candlesToLoad = Math.Min(limit, countToLoad - candlesLoaded);
 
-                // Получаем порцию свечей до periodEnd
+                // Загружаем следующую порцию
                 List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, periodEnd, candlesToLoad);
 
-                // Если ошибка или пусто — прекращаем
+                // Если пришёл null или пусто — выходим
                 if (rangeCandles == null || rangeCandles.Count == 0)
                 {
                     break;
@@ -549,32 +622,34 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     }
                 }
 
-                candlesLoaded += rangeCandles.Count;
-
-                // Следующий "конец" периода — начало первой свечи из этого блока
+                // Обновляем конец диапазона — на начало первой свечи
                 periodEnd = rangeCandles[0].TimeStart;
 
-                // Если ушли раньше нужного диапазона — завершаем
-                if (periodEnd <= timeEnd - TimeSpan.FromMinutes(tf.TotalMinutes * countToLoad))
+                // Проверка: если дошли до начала — выходим
+                if (periodEnd <= periodStart)
                 {
                     break;
                 }
+
+                // Увеличиваем счётчик
+                candlesLoaded += rangeCandles.Count;
             }
 
-            // Удаляем свечи позже указанного времени
+            // Удаляем свечи вне запрошенного диапазона
             for (int i = allCandles.Count - 1; i >= 0; i--)
             {
-                if (allCandles[i].TimeStart > timeEnd)
+                if (allCandles[i].TimeStart < periodStart || allCandles[i].TimeStart > timeEnd)
                 {
                     allCandles.RemoveAt(i);
                 }
             }
 
-            // Сортировка на случай, если порядок сбился
+            // Сортировка по времени
             allCandles.Sort((a, b) => a.TimeStart.CompareTo(b.TimeStart));
 
             return allCandles;
         }
+
 
 
         public List<Trade> GetTickDataToSecurity(Security security, DateTime startTime, DateTime endTime, DateTime actualTime)
@@ -615,14 +690,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 timeFrameMinutes == 30 ||
                 timeFrameMinutes == 60 ||
                 timeFrameMinutes == 120 ||
-                timeFrameMinutes == 240 ||
-                timeFrameMinutes == 360 ||
-                timeFrameMinutes == 720 ||
+                timeFrameMinutes == 240 |
                 timeFrameMinutes == 1440)
-
             {
                 return true;
             }
+            
             return false;
         }
 

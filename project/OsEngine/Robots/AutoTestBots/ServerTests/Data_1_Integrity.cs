@@ -3,6 +3,7 @@ using OsEngine.Market;
 using OsEngine.Market.Servers;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace OsEngine.Robots.AutoTestBots.ServerTests
 {
@@ -181,6 +182,30 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
             try
             {
                 candles = Server.GetCandleDataToSecurity(secName, secClass, builder, startTime, endTime, startTime, false);
+                string filePath = "candlesTf.txt";
+                using (StreamWriter writer = new StreamWriter(filePath, true))
+                {
+                    // Пишем заголовок CSV-файла
+                    writer.WriteLine("TimeStart,TF,Open,High,Low,Close,Volume");
+
+                    // Проходим по всем свечам
+                    for (int i = 0; i < candles.Count; i++)
+                    {
+                        Candle candle = candles[i];
+
+                        // Форматируем строку: дата + значения свечи через запятую
+                        string line = $"{candle.TimeStart:yyyy-MM-dd HH:mm:ss}," +
+                                      $"{timeFrame}," +
+                                      $"{candle.Open.ToString(System.Globalization.CultureInfo.InvariantCulture)}," +
+                                      $"{candle.High.ToString(System.Globalization.CultureInfo.InvariantCulture)}," +
+                                      $"{candle.Low.ToString(System.Globalization.CultureInfo.InvariantCulture)}," +
+                                      $"{candle.Close.ToString(System.Globalization.CultureInfo.InvariantCulture)}," +
+                                      $"{candle.Volume.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+                        
+                        writer.WriteLine(line);
+                    }
+                }
             }
             catch (Exception ex)
             {
