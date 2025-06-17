@@ -1464,7 +1464,7 @@ namespace OsEngine.Market.Servers.Bitfinex
             {
                 try
                 {
-                    Thread.Sleep(20000);
+                    Thread.Sleep(2000);
 
                     if (ServerStatus == ServerConnectStatus.Disconnect)
                     {
