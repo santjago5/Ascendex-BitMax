@@ -7,7 +7,7 @@ using Newtonsoft.Json;
 
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
-   
+
     public class AscendexSpotOrderResponse
     {
         public string code { get; set; }             // Код ответа / Response code
@@ -17,16 +17,18 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
     // Класс для свойства 'data' / Class for 'data' field
     public class AscendexSpotOrderDataRest
     {
+        public string accountId { get; set; }    // Идентификатор аккаунта / Account ID
         public string ac { get; set; }               // Тип аккаунта / Account type
-        public string accountId { get; set; }        // Идентификатор аккаунта / Account ID
         public string action { get; set; }           // Действие (например, place-order) / Action (e.g. place-order)/(cancel-order)/(cancel-all)
-        public AscendexSpotOrderInfo info { get; set; }     // Подробная информация о заказе / Detailed order info
         public string status { get; set; }           // Статус запроса (например, ACCEPT) / Request status (e.g. ACCEPT)
+        public AscendexSpotOrderInfo info { get; set; }     // Подробная информация о заказе / Detailed order info
+
     }
 
-   
+
     public class AscendexSpotOrderInfo
     {
+        public string id { get; set; }               //
         public string avgPx { get; set; }            // Средняя цена / Average price
         public string cumFee { get; set; }           // Совокупная комиссия / Cumulative fee
         public string cumFilledQty { get; set; }     // Совокупное исполненное количество / Cumulative filled quantity
@@ -46,7 +48,7 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
     }
     public class AscendexSpotOpenOrdersResponse
     {
-        public string ac{ get; set; }                     //      AccountCategory 
+        public string ac { get; set; }                     //      AccountCategory 
         public string accountId { get; set; }
         public string code { get; set; }
         public List<AscendexSpotOrderInfo> data { get; set; }

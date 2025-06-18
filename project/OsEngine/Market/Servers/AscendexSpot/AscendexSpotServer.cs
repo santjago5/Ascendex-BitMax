@@ -507,7 +507,15 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             int countNeedToLoad = GetCountCandlesFromPeriod(startTime, endTime, timeFrameBuilder.TimeFrameTimeSpan);
 
-            return GetCandleHistory(security.NameFull, timeFrameBuilder.TimeFrameTimeSpan, true, countNeedToLoad, endTime);
+            //return GetCandleHistory(security.NameFull, timeFrameBuilder.TimeFrameTimeSpan, true, countNeedToLoad, endTime);
+            List<Candle> candles = GetCandleHistory(security.NameFull, timeFrameBuilder.TimeFrameTimeSpan, true, countNeedToLoad, endTime);
+
+            if (candles == null || candles.Count == 0)
+            {
+                return null;
+            }
+
+            return candles;
         }
 
         //public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
@@ -2510,8 +2518,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     updateOrder.NumberUser = 0;
                 }
 
-                updateOrder.SecurityNameCode = data.Symbol;
-                updateOrder.SecurityClassCode = GetNameClass(data.Symbol);
+                updateOrder.SecurityNameCode = data.symbol;
+                updateOrder.SecurityClassCode = GetNameClass(data.symbol);
                 updateOrder.State = GetOrderState(data.st);
                 updateOrder.NumberMarket = data.orderId;
                 updateOrder.Side = (data.sd == "Buy") ? Side.Buy : Side.Sell;
@@ -2542,7 +2550,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                if (string.IsNullOrEmpty(data.Quantity) || string.IsNullOrEmpty(data.ap))
+                if (string.IsNullOrEmpty(data.quantity) || string.IsNullOrEmpty(data.ap))
                 {
                     SendLogMessage("UpdateOrder> Trade skipped due to missing data (Quantity  or ap)", LogMessageType.Error);
                     return;
@@ -2552,9 +2560,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 myTrade.NumberOrderParent = data.orderId;
                 myTrade.Side = data.sd == "Buy" ? Side.Buy : Side.Sell;
-                myTrade.SecurityNameCode = data.Symbol;
+                myTrade.SecurityNameCode = data.symbol;
                 myTrade.Price = data.Price.ToDecimal();
-                myTrade.Volume = data.Quantity.ToDecimal();
+                myTrade.Volume = data.quantity.ToDecimal();
                 myTrade.NumberTrade = data.sn;
                 myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(data.t));
 
@@ -2581,7 +2589,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 portfolio.ValueCurrent = 1;
                 portfolio.ServerType = ServerType.AscendexSpot;
 
-                string[] parts = data.Symbol.Split('/');
+                string[] parts = data.symbol.Split('/');
                 if (parts.Length == 2)
                 {
                     string baseAsset = parts[0];
@@ -2662,7 +2670,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 IRestResponse request = CreatePrivateQuery(fullPath, prehashPath, body, Method.POST);
 
-                if (request == null)
+                if (request == null || request.StatusCode != HttpStatusCode.OK)
                 {
                     SendLogMessage("Deserialization resulted in null", LogMessageType.Error);
                     return;
@@ -2670,18 +2678,17 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 AscendexSpotOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(request.Content);
 
-                if (request.StatusCode == HttpStatusCode.OK && response.code != "0")
+                if (response == null || response.code != "0" || response.data == null || response.data.info == null)// if (request.StatusCode == HttpStatusCode.OK && response.code != "0")
                 {
                     SendLogMessage($"Error : {request.Content}", LogMessageType.Error);
                     order.State = OrderStateType.Fail;
                     MyOrderEvent?.Invoke(order);
+                    return;
                 }
-
-                if (response != null && response.code == "0" && response.data != null)
-                {
-                    SendLogMessage($" Order send: status {response.data.status} OrderId :{response.data.info.orderId}", LogMessageType.Trade);//trade
-
-                    if (response.data.status == "Ack" || response.data.status == "New" || response.data.info.status == "Done")
+               
+                    //if (response != null && response.code == "0" && response.data != null)
+                
+                    if (response.data.status == "Ack" || response.data.status == "New" || response.data.info.status == "DONE" ||  response.data.info.status == "Filled")
                     {
                         var orderTracker = new OrderTracker()
                         {
@@ -2690,9 +2697,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         };
 
                         _orderTracker.Add(orderTracker);
-                        order.State = GetOrderState(response.data.status);
+                        order.State = GetOrderState(response.data.info.status);
                         order.NumberMarket = response.data.info.orderId;
-
+                        SendLogMessage($" Order send: status {response.data.status} OrderId :{response.data.info.orderId}", LogMessageType.Trade);
                         string json = JsonConvert.SerializeObject(_orderTracker);
                         File.WriteAllText("order_trackers.json", json);
 
@@ -2722,12 +2729,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             SendLogMessage("Ошибка при записи в order_trackers.txt: " + ex.Message, LogMessageType.Error);
                         }
 
-                        MyOrderEvent?.Invoke(order);
+                       // MyOrderEvent?.Invoke(order);
                     }
 
-                    //GetOrderState(order.NumberMarket);
-                    // MyOrderEvent?.Invoke(order);
-                }
+                   Order finalOrder = GetOrderStatusById(order.NumberMarket);
+                    MyOrderEvent?.Invoke(order);
+                
                 //else
                 //{
                 //    SendLogMessage($"Error Send Order : {message}, StatusCode {code}", LogMessageType.Error);
@@ -3124,17 +3131,18 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string prehashPath = "order/status";
 
                 IRestResponse request = CreatePrivateQuery(path, prehashPath, null, Method.GET);
-
+                //"{\"code\":0,\"accountId\":\"cshANLX2if7MJZaPkp5EMWUZLYNwIhJv\",\"ac\":\"CASH\",\"data\":{\"seqNum\":47139308032,\"orderId\":\"a197838c6321U3283712985NB6KMgh4s\",\"symbol\":\"TRX/USDT\",\"orderType\":\"Market\",\"lastExecTime\":1750258706107,\"price\":\"0.28328\",\"orderQty\":\"20\",\"side\":\"Buy\",\"status\":\"Filled\",\"avgPx\":\"0.26979\",\"cumFilledQty\":\"20\",\"stopPrice\":\"\",\"errorCode\":\"\",\"cumFee\":\"0.0053958\",\"feeAsset\":\"USDT\",\"execInst\":\"NULL_VAL\"}}"
                 if (request == null)
                 {
                     SendLogMessage("GetOrderStatus> Request returned null", LogMessageType.Error);
                     return new Order();
                 }
 
-                if (request.StatusCode == HttpStatusCode.OK)
+                if (request.StatusCode == HttpStatusCode.OK )
                 {
 
-                    AscendexSpotQueryOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotQueryOrderResponse>(request.Content);
+                    AscendexSpotQueryOrderResponse response =
+     JsonConvert.DeserializeObject<AscendexSpotQueryOrderResponse>(request.Content);
 
                     if (response == null)
                     {
@@ -3150,7 +3158,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         order.State = GetOrderState(orderData.status);
                         order.NumberMarket = orderData.orderId;
                         order.Price = orderData.price.ToDecimal();
-                        //order.NumberUser = order.NumberUser; //GetNumberUserByOrderId(orderData.orderId);
+                        //order.NumberUser = Convert.ToInt32(orderData.id); 
                         order.PortfolioNumber = "AscendexSpotPortfolio";
                         order.SecurityClassCode = GetNameClass(orderData.symbol);
                         order.Side = orderData.side == "Buy" ? Side.Buy : Side.Sell;
@@ -3162,19 +3170,19 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         {
                             MyTrade myTrade = new MyTrade();
 
-                            myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(response.data.lastExecTime));
+                            myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(orderData.lastExecTime));
 
-                            myTrade.SecurityNameCode = response.data.symbol;
+                            myTrade.SecurityNameCode = orderData.symbol;
 
-                            myTrade.Price = response.data.price.ToDecimal();
+                            myTrade.Price = orderData.price.ToDecimal();
 
-                            myTrade.NumberTrade = response.data.seqNum;
+                            myTrade.NumberTrade = orderData.seqNum;
 
-                            myTrade.NumberOrderParent = response.data.orderId;
+                            myTrade.NumberOrderParent = orderData.orderId;
 
-                            myTrade.Volume = response.data.orderQty.ToDecimal();
+                            myTrade.Volume = orderData.orderQty.ToDecimal();
 
-                            myTrade.Side = (response.data.side == "Buy") ? Side.Buy : Side.Sell;
+                            myTrade.Side = (orderData.side == "Buy") ? Side.Buy : Side.Sell;
 
                             MyTradeEvent?.Invoke(myTrade);
                         }
@@ -3330,7 +3338,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private OrderStateType GetOrderState(string orderStateResponse)
         {
-            if (orderStateResponse.StartsWith("New") || orderStateResponse.StartsWith("Ack") || orderStateResponse.StartsWith("Done"))
+            if (orderStateResponse.StartsWith("New") || orderStateResponse.StartsWith("Ack") || orderStateResponse.StartsWith("DONE"))
             {
                 return OrderStateType.Active;
             }
@@ -3533,4 +3541,4 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         #endregion
     }
-}
+}   
