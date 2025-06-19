@@ -424,7 +424,7 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
 
             if (order.Side != _waitSide)
             {
-                this.SetNewError("Error 19. Wait side note equal. Wait: " + _waitSide
+                this.SetNewError($"{order.Side},{_waitSide}, Error 19. Wait side note equal. Wait: " + _waitSide
                     + " Side in order: " + order.Side);
                 return false;
             }
@@ -497,7 +497,8 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
 
             if (order.NumberUser == 0)
             {
-                this.SetNewError("Error 30. NumberUser is zero");
+                this.SetNewError($"{order.NumberUser}Error 30. NumberUser is zero");
+
                 return false;
             }
 
@@ -572,7 +573,7 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
 
             if (myTrade.Side != _waitSide)
             {
-                this.SetNewError("Error 37. MyTrade. Wait side note equal. Wait: " + _waitSide
+                this.SetNewError($"{myTrade.Side}, {_waitSide}, Error 37. MyTrade. Wait side note equal. Wait: " + _waitSide
                   + " Side in order: " + myTrade.Side);
                 return false;
             }

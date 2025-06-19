@@ -27,6 +27,8 @@ using MessageEventArgs = OsEngine.Entity.WebSocketOsEngine.MessageEventArgs;
 using Timer = System.Timers.Timer;
 using System.IO;
 using System.Linq;
+using static OsEngine.Market.Servers.AscendexSpot.AscendexSpotServerRealization;
+using WebSocketSharp;
 
 
 
@@ -2077,7 +2079,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             }
 
                             // Очищаем словарь сделок
-                            // _tradeDictionary.Clear();
+                            //_tradeDictionary.Clear();
                         }
                         catch (Exception exception)
                         {
@@ -2522,7 +2524,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 updateOrder.SecurityClassCode = GetNameClass(data.symbol);
                 updateOrder.State = GetOrderState(data.st);
                 updateOrder.NumberMarket = data.orderId;
-                updateOrder.Side = (data.sd == "Buy") ? Side.Buy : Side.Sell;
+                updateOrder.Side = data.sd == "Buy" ? Side.Buy : Side.Sell;
                 updateOrder.TypeOrder = (data.OrderType == "Limit") ? OrderPriceType.Limit : OrderPriceType.Market;
                 updateOrder.Price = (data.Price).ToDecimal();
                 updateOrder.Volume = (data.q).ToDecimal();
@@ -2664,7 +2666,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                                   $"}}";
 
                 }
-
+                
                 string fullPath = $"/{accountGroup}/api/pro/v1/cash/order";
                 string prehashPath = "order";
 
@@ -2699,7 +2701,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         _orderTracker.Add(orderTracker);
                         order.State = GetOrderState(response.data.info.status);
                         order.NumberMarket = response.data.info.orderId;
-                        SendLogMessage($" Order send: status {response.data.status} OrderId :{response.data.info.orderId}", LogMessageType.Trade);
+                        SendLogMessage($" Order send: status {response.data.info.status} OrderId :{response.data.info.orderId}", LogMessageType.Trade);
                         string json = JsonConvert.SerializeObject(_orderTracker);
                         File.WriteAllText("order_trackers.json", json);
 
@@ -2723,10 +2725,28 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                                 writer.WriteLine(line);
                             }
+
+                        string time2 = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"); // текущее время
+                        string line2 = $"{time2},{orderTracker.OsOrderNumberUser},{orderTracker.OrderNumberMarket},{typeOrder},{orderSide}";
+
+                        string path2 = "O3.txt";
+
+                        // Проверяем, нужно ли добавить заголовки
+                        bool addHeader2 = !File.Exists(path2);
+
+                        using (StreamWriter writer = new StreamWriter(path2, true)) // append = true
+                        {
+                            if (addHeader)
+                            {
+                                writer.WriteLine("Time,OsOrderNumberUser,OrderNumberMarket,orderType, side");
+                            }
+
+                            writer.WriteLine(line2);
                         }
+                    }
                         catch (Exception ex)
                         {
-                            SendLogMessage("Ошибка при записи в order_trackers.txt: " + ex.Message, LogMessageType.Error);
+                            SendLogMessage("Ошибка при записи в O3.txt: " + ex.Message, LogMessageType.Error);
                         }
 
                        // MyOrderEvent?.Invoke(order);
@@ -2875,7 +2895,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     SendLogMessage($" Error Order cancellation:  {response.Content},{response.ErrorMessage}", LogMessageType.Error);
                 }
 
-                GetPortfolios();
+                //GetPortfolios();
             }
 
             catch (Exception exception)
@@ -3138,7 +3158,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return new Order();
                 }
 
-                if (request.StatusCode == HttpStatusCode.OK )
+                if (request.StatusCode == HttpStatusCode.OK)
                 {
 
                     AscendexSpotQueryOrderResponse response =
@@ -3182,23 +3202,46 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                             myTrade.Volume = orderData.orderQty.ToDecimal();
 
-                            myTrade.Side = (orderData.side == "Buy") ? Side.Buy : Side.Sell;
+                            myTrade.Side = orderData.side == "Buy" ? Side.Buy : Side.Sell;
 
-                            MyTradeEvent?.Invoke(myTrade);
+
+                            // }
+
+                            string time3 = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"); // текущее время
+                            string line3 = $"{time3},{myTrade.NumberOrderParent},{order.NumberMarket},{myTrade.Side},{order.Side}";
+
+                            string path2 = "T3.txt";
+
+                            // Проверяем, нужно ли добавить заголовки
+                            bool addHeader3 = !File.Exists(path2);
+
+                            using (StreamWriter writer = new StreamWriter(path2, true)) // append = true
+                            {
+                                if (addHeader3)
+                                {
+                                    writer.WriteLine("Time,NumberOrderParent,NumberMarket,TradeSide,OrderSide");
+                                }
+
+                                writer.WriteLine(line3);
+
+
+                                MyTradeEvent?.Invoke(myTrade);
+                            }
+                        }
+                        else
+                        {
+                            SendLogMessage("GetOrderStatus> response.data is null", LogMessageType.Error);
                         }
                     }
                     else
                     {
-                        SendLogMessage("GetOrderStatus> response.data is null", LogMessageType.Error);
+                        SendLogMessage($"HTTP Error: {request.StatusCode}, content={request.Content}", LogMessageType.Error);
                     }
-                }
-                else
-                {
-                    SendLogMessage($"HTTP Error: {request.StatusCode}, content={request.Content}", LogMessageType.Error);
-                }
 
-                /* MyOrderEvent?.Invoke(order);*/
-                return order;
+                    /* MyOrderEvent?.Invoke(order);*/
+                }
+                    return order;
+                
             }
             catch (Exception exception)
             {
