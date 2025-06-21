@@ -497,7 +497,7 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
 
             if (order.NumberUser == 0)
             {
-                this.SetNewError($"{order.NumberUser}Error 30. NumberUser is zero");
+                this.SetNewError($"Error 30. NumberUser is zero");
 
                 return false;
             }

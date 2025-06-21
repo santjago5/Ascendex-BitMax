@@ -227,7 +227,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             public bool IsSupports_ProxyFor_MultipleInstances
             {
-                get { return false; }
+                get { return true; }
             }
 
             #endregion

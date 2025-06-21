@@ -49,16 +49,17 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string orderId { get; set; } // order id "s16ef210b1a50866943712bfaf1584b" — уникальный идентификатор ордера
 
         [JsonProperty("ot")]
-        public string OrderType { get; set; }    // order type "Market, Limit"— тип ордера (например: Market, Limit)
+        public string orderType { get; set; }    // order type "Market, Limit"— тип ордера (например: Market, Limit)
 
         [JsonProperty("p")]
-        public string Price { get; set; }     // order price  "7967.62"— цена ордера
+        public string price { get; set; }     // order price  "7967.62"— цена ордера
         public string q { get; set; }     // order quantity "0.0083"— запрошенное количество
         public string qab { get; set; }   // quote asset available balance "793.23"— доступный котируемый актив
         public string qtb { get; set; }   // quote asset total balance "860.23"— общий котируемый актив
         public string sd { get; set; }    // order side "Buy / Sell" — сторона сделки (Buy / Sell)
         public string sp { get; set; }    // stop price "" — цена стопа (может быть пустой)
-        public string st { get; set; }    // order status "New, Filled, Canceled etc" — статус ордера (New, Filled, Canceled и т.д.)
+        [JsonProperty("st")]
+        public string status { get; set; }    // order status "New, Filled, Canceled etc" — статус ордера (New, Filled, Canceled и т.д.)
         public string t { get; set; }     // latest execution timestamp "1576019215402"— время последнего исполнения
         public string ei { get; set; }    // execution instruction "NULL_VAL" — инструкция исполнения
 
