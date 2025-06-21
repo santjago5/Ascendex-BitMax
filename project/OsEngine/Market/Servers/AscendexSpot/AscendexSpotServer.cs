@@ -1095,29 +1095,53 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
         private int _webSocketConnectAttempts = 0;
-        private DateTime _lastWebSocketConnectTime = DateTime.MinValue;
-        private static readonly int _minReconnectIntervalSec = 8;
+        private DateTime _lastMarketDepthsConnectTime = DateTime.MinValue;
+        private  int _minReconnectIntervalSec = 8;
+        private DateTime _lastPublicTradesConnectTime = DateTime.MinValue;
+        private DateTime _lastPrivateConnectTime = DateTime.MinValue;
+        // Метод проверяет, сколько времени прошло с последнего подключения.
+        // Если меньше минимального интервала — ждёт оставшееся время.
+        private void WaitUntilReconnectAvailable(ref DateTime lastConnectTime, int _minIntervalSeconds, string socketName)
+        {
+            // Получаем текущее время
+            DateTime now = DateTime.UtcNow;
+
+            // Считаем прошедшие секунды
+            double secondsSinceLastConnect = (now - lastConnectTime).TotalSeconds;
+
+            // Если прошло меньше, чем нужно — ждём
+            if (secondsSinceLastConnect < _minIntervalSeconds)
+            {
+                double waitTime = _minIntervalSeconds - secondsSinceLastConnect;
+
+                // Логируем задержку с точностью до сотых
+                SendLogMessage($"[{socketName}] Задержка перед реконнектом: {waitTime:F2} сек.", LogMessageType.System);
+
+                // Спим с точностью по времени
+                Thread.Sleep(TimeSpan.FromSeconds(waitTime));
+            }
+
+            // Обновляем метку последнего подключения
+            lastConnectTime = DateTime.UtcNow;
+        }
+
+
         private WebSocket CreateNewPublicMarketDepthsSocket()
         {
             try
             {
                 Thread.Sleep(5000);
 
-                //DateTime now = DateTime.UtcNow;
-                //double secondsSinceLastConnect = (now - _lastWebSocketConnectTime).TotalSeconds;
+                // ⏱ Ждём, если с последнего подключения прошло меньше 8 секунд
+                WaitUntilReconnectAvailable(ref _lastMarketDepthsConnectTime, 5, "MarketDepths");
 
-                //if (secondsSinceLastConnect < _minReconnectIntervalSec)
-                //{
-                //    double waitTime = _minReconnectIntervalSec - secondsSinceLastConnect;
-                //    SendLogMessage($" Delay before connecting to MarketDepths WebSocket: {waitTime} sec.", LogMessageType.System);
-                //    Thread.Sleep((int)(waitTime * 1000));
-                //}
-
-
-                _webSocketConnectAttempts++;
-                _lastWebSocketConnectTime = DateTime.UtcNow;
-
-                SendLogMessage($"Try to connect to WebSocket MarketDepths #{_webSocketConnectAttempts} # {_lastWebSocketConnectTime}", LogMessageType.System);
+                // 🔒 Ограничение: не создавать больше 15 сокетов
+                if (_webSocketPublicTrades.Count >= 15)
+                {
+                    SendLogMessage(" WebSocket Trades limit exceeded: not creating new connection.", LogMessageType.Error);
+                    return null;
+                }
+                SendLogMessage($"Try to connect to WebSocket MarketDepths #{_webSocketConnectAttempts} # {_lastMarketDepthsConnectTime}", LogMessageType.System);
 
 
                 WebSocket webSocketPublicMarketDepthsNew = new WebSocket(_webSocketUrl);
@@ -1166,11 +1190,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 Thread.Sleep(5000);
 
-                if (_webSocketPublicTrades.Count >= 15)
-                {
-                    SendLogMessage(" WebSocket Trades limit exceeded: not creating new connection.", LogMessageType.Error);
-                    return null;
-                }
+                WaitUntilReconnectAvailable(ref _lastPublicTradesConnectTime,7 , "PublicTrades");
+
+                //// 🛑 Проверяем: приватный сокет уже существует
+                //if (_webSocketPrivate != null)
+                //{
+                //    return;
+                //}
 
 
                 //SendLogMessage($" Try to connect to WebSocket (Trades) #{_webSocketConnectAttempts} # {_lastWebSocketConnectTime}", LogMessageType.System);
@@ -1279,7 +1305,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                Thread.Sleep(5000);
+                 Thread.Sleep(5000);
+                WaitUntilReconnectAvailable(ref _lastPrivateConnectTime, 8, "Private");
 
                 if (_webSocketPrivate != null)
                 {
@@ -2526,6 +2553,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     basePos.ValueBegin = data.btb.ToDecimal();
                     basePos.ValueCurrent = data.bab.ToDecimal();
                     basePos.ValueBlocked = basePos.ValueBegin - basePos.ValueCurrent;
+                  
                     portfolio.SetNewPosition(basePos);
 
                     PositionOnBoard quotePos = new PositionOnBoard();
@@ -2534,6 +2562,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     quotePos.ValueBegin = data.qtb.ToDecimal();
                     quotePos.ValueCurrent = data.qab.ToDecimal();
                     quotePos.ValueBlocked = quotePos.ValueBegin - quotePos.ValueCurrent;
+                  
                     portfolio.SetNewPosition(quotePos);
                 }
 
@@ -2546,8 +2575,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage("UpdatePortfolio> Error: " + exception.Message, LogMessageType.Error);
             }
         }
-
-
 
         #endregion
         private Dictionary<int, string> _orderTrackerDict = new Dictionary<int, string>();
@@ -2595,9 +2622,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     string json = File.ReadAllText("marketToUserDict.json");
                     _marketToUserDict = JsonConvert.DeserializeObject<Dictionary<string, int>>(json);
-
-                    SendLogMessage($"marketToUserDict загружен. Кол-во записей: {_marketToUserDict.Count}", LogMessageType.System);
-
                 }// Загрузка NumberUser → MarketOrderId
                 if (File.Exists("orderTrackerDict.json"))
                 {
@@ -2607,10 +2631,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception ex)
             {
-                SendLogMessage("Ошибка загрузки marketToUserDict: " + ex.Message, LogMessageType.Error);
+                SendLogMessage("Error loading dictionary: " + ex.Message, LogMessageType.Error);
             }
         }
-
 
         private void SaveOrderTrackers()
         {
@@ -2618,7 +2641,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 if (_orderTrackerDict == null || _marketToUserDict == null)
                 {
-                    SendLogMessage("❌ Один из словарей null, сохранение отменено", LogMessageType.Error);
                     return;
                 }
 
@@ -2690,7 +2712,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (response == null || response.code != "0" || response.data == null || response.data.info == null)// if (request.StatusCode == HttpStatusCode.OK && response.code != "0")
                 {
-                    SendLogMessage($"Error : {request.Content}", LogMessageType.Error);
                     order.State = OrderStateType.Fail;
                     //MyOrderEvent?.Invoke(order);
                     return;
@@ -2712,6 +2733,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             _marketToUserDict.Add(response.data.info.orderId, order.NumberUser);
                         }
                     }
+
                     SaveOrderTrackers();
                 }
             }
@@ -2721,7 +2743,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
 
         }
-        private RateGate _rateGateCancelOrder = new RateGate(1, TimeSpan.FromMilliseconds(500));
+        private RateGate _rateGateCancelOrder = new RateGate(1, TimeSpan.FromMilliseconds(1000));
         public void CancelAllOrders()
         {
             try
@@ -2746,18 +2768,19 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     if (cancelResult != null && cancelResult.code == "0")//cancel-All
                     {
-                        SendLogMessage($"All active orders cancelled", LogMessageType.Error);
+                        SendLogMessage($"All active orders cancelled", LogMessageType.Trade);
                         GetPortfolios();
                     }
                     else
                     {
-                        SendLogMessage($"Error: code={cancelResult?.code}", LogMessageType.Error);
+                        SendLogMessage($"Error: code={cancelResult.code}", LogMessageType.Error);
                     }
                 }
                 else
                 {
                     SendLogMessage($"Error Order canceled {response.StatusCode}", LogMessageType.Error);
                 }
+
                 GetPortfolios();
             }
             catch (Exception exception)
@@ -3123,26 +3146,20 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         order.Volume = orderData.orderQty.ToDecimal();
                         order.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(orderData.lastExecTime));
                         order.State = GetOrderState(orderData.status);
+
                         if (orderData.status == "Filled" || orderData.status == "PartiallyFilled")
                         {
                             MyTrade myTrade = new MyTrade();
 
                             myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(orderData.lastExecTime));
-
                             myTrade.SecurityNameCode = orderData.symbol;
-
                             myTrade.Price = orderData.price.ToDecimal();
-
                             myTrade.NumberTrade = orderData.seqNum;
-
                             myTrade.NumberOrderParent = orderData.orderId;
-
                             myTrade.Volume = orderData.orderQty.ToDecimal();
-
                             myTrade.Side = orderData.side == "Buy" ? Side.Buy : Side.Sell;
                           
                             MyTradeEvent?.Invoke(myTrade);
-
                         }
 
                     }
