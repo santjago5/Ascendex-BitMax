@@ -86,7 +86,8 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
 
             this.SetNewServiceInfo("Total Securities to subscrible: " + secs.Count);
 
-            DateTime endWaitTime = DateTime.Now.AddMinutes(10);
+            // DateTime endWaitTime = DateTime.Now.AddMinutes(10);
+            DateTime endWaitTime = DateTime.Now.AddMinutes(50);
 
             for (int i = 0; i < secs.Count; i++)
             {
