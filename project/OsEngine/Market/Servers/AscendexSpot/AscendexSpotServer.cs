@@ -1750,7 +1750,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         return;
                     }
 
-                    // Все сокеты открыты — подключение подтверждено
+                   
                     if (ServerStatus != ServerConnectStatus.Connect)
                     {
                         ServerStatus = ServerConnectStatus.Connect;
@@ -1836,7 +1836,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         #region  9  WebSocket security subscribe
 
-        private RateGate _rateGateSubscribed = new RateGate(1, TimeSpan.FromMilliseconds(2000));
+        private RateGate _rateGateSubscribed = new RateGate(1, TimeSpan.FromMilliseconds(790));
 
         public void Subscrible(Security security)//////ошибка в слове Subscribe
         {
