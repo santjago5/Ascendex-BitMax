@@ -257,8 +257,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         #region 3 Securities
 
-        private List<Security> _securities = new List<Security>();
-
         private RateGate _rateGateSecurity = new RateGate(1, TimeSpan.FromMilliseconds(2100));
 
         public void GetSecurities()
@@ -640,8 +638,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             return allCandles;
         }
 
-
-
         public List<Trade> GetTickDataToSecurity(Security security, DateTime startTime, DateTime endTime, DateTime actualTime)
         {
             return null;
@@ -941,48 +937,48 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-        private void PublicMessageTradesReader()
-        {
-            while (true)
-            {
-                try
-                {
-                    if (ServerStatus == ServerConnectStatus.Disconnect)
-                    {
-                        Thread.Sleep(2000);
-                        continue;
-                    }
+        //private void PublicMessageTradesReader()
+        //{
+        //    while (true)
+        //    {
+        //        try
+        //        {
+        //            if (ServerStatus == ServerConnectStatus.Disconnect)
+        //            {
+        //                Thread.Sleep(2000);
+        //                continue;
+        //            }
 
-                    if (FIFOListWebSocketPublicTradesMessage.IsEmpty)
-                    {
-                        Thread.Sleep(1);
-                        continue;
-                    }
+        //            if (FIFOListWebSocketPublicTradesMessage.IsEmpty)
+        //            {
+        //                Thread.Sleep(1);
+        //                continue;
+        //            }
 
-                    FIFOListWebSocketPublicTradesMessage.TryDequeue(out string message);
+        //            FIFOListWebSocketPublicTradesMessage.TryDequeue(out string message);
 
-                    if (message == null)
-                    {
-                        continue;
-                    }
+        //            if (message == null)
+        //            {
+        //                continue;
+        //            }
 
-                    else if (message.Contains("\"m\":\"error\""))
-                    {
-                        SendLogMessage($"Error websocketTrades-{message}", LogMessageType.Error);
-                        continue;
-                    }
-                    if (message.Contains("\"m\":\"trades\""))
-                    {
-                        UpdateTrade(message);
-                    }
-                }
-                catch (Exception exception)
-                {
-                    Thread.Sleep(5000);
-                    SendLogMessage(exception.ToString(), LogMessageType.Error);
-                }
-            }
-        }
+        //            else if (message.Contains("\"m\":\"error\""))
+        //            {
+        //                SendLogMessage($"Error websocketTrades-{message}", LogMessageType.Error);
+        //                continue;
+        //            }
+        //            if (message.Contains("\"m\":\"trades\""))
+        //            {
+        //                UpdateTrade(message);
+        //            }
+        //        }
+        //        catch (Exception exception)
+        //        {
+        //            Thread.Sleep(5000);
+        //            SendLogMessage(exception.ToString(), LogMessageType.Error);
+        //        }
+        //    }
+        //}
 
         private void PrivateMessageReader()
         {
@@ -1050,7 +1046,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private ConcurrentQueue<string> FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
         private ConcurrentQueue<string> FIFOListWebSocketPublicMarketDepthsMessage = new ConcurrentQueue<string>();
-        private ConcurrentQueue<string> FIFOListWebSocketPublicTradesMessage = new ConcurrentQueue<string>();
+      //
+      //rivate ConcurrentQueue<string> FIFOListWebSocketPublicTradesMessage = new ConcurrentQueue<string>();
 
         //private List<WebSocket> _webSocketPublicTrades = new List<WebSocket>();
         private List<WebSocket> _webSocketPublicMarketDepths = new List<WebSocket>();
