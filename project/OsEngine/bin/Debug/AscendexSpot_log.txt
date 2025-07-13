@@ -97046,3 +97046,27 @@
 2025-07-07 18:53:55.299 [System] BTT/USDT,1
 2025-07-07 18:53:55.299 [System] BTT/USDT,1
 2025-07-07 18:53:55.300 [System] BTT/USDT,1
+2025-07-13 09:54:58.667 [System] Auth sent: {"op":"auth","id":"auth-reqae71d38c-3c25-4f05-92fc-cbaf458e02bb","t":1752393298642,"key":"lTSCJ4kq3eTyQGJpM0pzHTJ9CqJwWrKf","sig":"b/jR72Bvx6dIfoBuUUEaP5kqwAtkQxGFUYBAjHhFoQE="}
+2025-07-13 09:54:58.685 [System] Current OPEN WebSocket Private count: 1
+2025-07-13 09:54:58.685 [System] CheckActivation: _webSocketPublicMarketDepths is EMPTY
+2025-07-13 09:54:58.686 [System] Current OPEN WebSocket Private count: 1
+2025-07-13 09:54:58.686 [System] Private socket fully OPEN. Open sockets: 1
+2025-07-13 09:54:58.686 [System] Connection to private data is Open
+2025-07-13 09:54:58.801 [System] Start AscendExSpot Connection
+2025-07-13 10:27:55.483 [System] Start AscendExSpot Connection
+2025-07-13 10:27:57.999 [System] Auth sent: {"op":"auth","id":"auth-reqd793c256-20d5-4d54-8d77-3087764d1c78","t":1752395277975,"key":"lTSCJ4kq3eTyQGJpM0pzHTJ9CqJwWrKf","sig":"mqZnk+NeIZ5+qZqJju1SWw54nTRSUeeHOX6kyilt1hY="}
+2025-07-13 10:27:58.000 [System] Current OPEN WebSocket Private count: 1
+2025-07-13 10:27:58.000 [System] CheckActivation: _webSocketPublicMarketDepths is EMPTY
+2025-07-13 10:27:58.000 [System] Current OPEN WebSocket Private count: 1
+2025-07-13 10:27:58.001 [System] Private socket fully OPEN. Open sockets: 1
+2025-07-13 10:27:58.001 [System] Connection to private data is Open
+2025-07-13 10:28:57.463 [Error] Connection Closed by AscendexSpot.  NormalClosure. WebSocket Private Closed Event
+2025-07-13 10:28:57.466 [Error] Connection Closed by AscendexSpot. Finally socket closed . WebSocket Private Closed Event
+2025-07-13 10:29:36.414 [System] [Reconnect][Private] Socket disconnected at 10:29:36.413
+2025-07-13 10:29:36.966 [System] Start AscendExSpot Connection
+2025-07-13 10:29:39.280 [System] Auth sent: {"op":"auth","id":"auth-req3ab74cbb-e696-4198-a593-51f53adc9228","t":1752395379280,"key":"lTSCJ4kq3eTyQGJpM0pzHTJ9CqJwWrKf","sig":"+x6t4iSCqTq+SVlLqTzCuGQWX8wwaibSp2uW07F4g9k="}
+2025-07-13 10:29:39.281 [System] Current OPEN WebSocket Private count: 1
+2025-07-13 10:29:39.282 [System] CheckActivation: _webSocketPublicMarketDepths is EMPTY
+2025-07-13 10:29:39.282 [System] Current OPEN WebSocket Private count: 1
+2025-07-13 10:29:39.282 [System] Private socket fully OPEN. Open sockets: 1
+2025-07-13 10:29:39.283 [System] Connection to private data is Open

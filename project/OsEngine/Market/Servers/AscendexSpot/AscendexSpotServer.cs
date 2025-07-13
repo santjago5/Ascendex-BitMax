@@ -40,6 +40,7 @@ using System.IO;
 
 
 
+
 namespace OsEngine.Market.Servers.AscendexSpot
 {
     public class AscendexSpotServer : AServer
@@ -94,7 +95,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                //Dispose();
                 LoadOrderTrackers();
 
                 _publicKey = ((ServerParameterString)ServerParameters[0]).Value;
@@ -124,18 +124,16 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     if (result != null && result.code == "0")
                     {
-
-
                         FIFOListWebSocketPublicMarketDepthsMessage = new ConcurrentQueue<string>();
                         FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
                         CreatePrivateWebSocketConnect();
                         CheckSocketsActivate();
 
-                        SendLogMessage("Start AscendExSpot Connection", LogMessageType.System);//system
+                        SendLogMessage("Start AscendExSpot Connection", LogMessageType.System);
                     }
                     else
                     {
-                        SendLogMessage("Status: Maintenance mode", LogMessageType.System);///system
+                        SendLogMessage("Status: Maintenance mode", LogMessageType.System);
                     }
                 }
                 else
@@ -157,9 +155,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
        
         private void CheckSocketsActivate()
         {
-            try
+            lock (_socketActivateLocker)
             {
-                lock (_socketActivateLocker)
+                try
                 {
                     if (_webSocketPrivate == null
                        || _webSocketPrivate?.ReadyState != WebSocketState.Open)
@@ -193,13 +191,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         ConnectEvent();
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                SendLogMessage(ex.Message, LogMessageType.Error);
+
+                catch (Exception exception)
+                {
+                    SendLogMessage(exception.Message, LogMessageType.Error);
+                }
             }
         }
-
 
         public void Dispose()
         {
@@ -1013,11 +1011,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     if (message.Contains("\"op\":\"auth\""))
                     {
-                        SendLogMessage("WebSocket private opened", LogMessageType.System);///system
+                        SendLogMessage("WebSocket private opened", LogMessageType.System);
 
                         if (message.Contains("\"code\":0"))
                         {
-                            SendLogMessage("Authorization to private channels", LogMessageType.System);///system
+                            SendLogMessage("Authorization to private channels", LogMessageType.System);
                         }
                         else
                         {
@@ -1066,9 +1064,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 _webSocketPublicMarketDepths.Add(CreateNewPublicMarketDepthsSocket());
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                SendLogMessage($"{ex.Message} {ex.StackTrace}", LogMessageType.Error);
+                SendLogMessage($"{exception.Message} {exception.StackTrace}", LogMessageType.Error);
             }
         }
 
@@ -1127,9 +1125,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 webSocketPublicMarketDepthsNew.OnClose += WebSocketPublicMarketDepthsNew_OnClose;
                 webSocketPublicMarketDepthsNew.OnMessage += WebSocketPublicMarketDepthsNew_OnMessage;
                 webSocketPublicMarketDepthsNew.OnError += WebSocketPublicMarketDepthsNew_OnError;
-                webSocketPublicMarketDepthsNew.Connect().Wait();
+                webSocketPublicMarketDepthsNew.Connect();
 
-                _lastMarketDepthsConnectTime = DateTime.UtcNow;
                 return webSocketPublicMarketDepthsNew;
             }
             catch (Exception exception)
@@ -1306,7 +1303,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 _webSocketPrivate.OnMessage += _webSocketPrivate_OnMessage;
                 _webSocketPrivate.OnError += _webSocketPrivate_OnError;
 
-                _webSocketPrivate.Connect().Wait();
+                _webSocketPrivate.Connect();
 
             }
             catch (Exception exception)
@@ -1331,7 +1328,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                         if (webSocketPublicMarketDepthsNew.ReadyState == WebSocketState.Open)
                         {
-                            webSocketPublicMarketDepthsNew.CloseAsync().Wait();
+                            webSocketPublicMarketDepthsNew.CloseAsync();
 
                         }
                         webSocketPublicMarketDepthsNew.Dispose();
@@ -1390,7 +1387,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     _webSocketPrivate.OnMessage -= _webSocketPrivate_OnMessage;
                     _webSocketPrivate.OnError -= _webSocketPrivate_OnError;
 
-                    _webSocketPrivate.CloseAsync().Wait();
+                    _webSocketPrivate.CloseAsync();
                     //_lastPrivateDisconnectTime = DateTime.UtcNow;
 
 
@@ -1454,8 +1451,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     CheckActivationSockets();
 
-                    SendLogMessage("AscendexSpot WebSocket public MarketDepths connection open", LogMessageType.System);///system
-                    SendLogMessage("MarketDepths socket connected. Open sockets: " + CountOpenSockets(), LogMessageType.System);
+                    SendLogMessage("AscendexSpot WebSocket MarketDepths connection open", LogMessageType.System);///system
                 }
             }
             catch (Exception exception)
@@ -1467,7 +1463,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                SendLogMessage($"{DateTime.Now:HH:mm:ss.fff} Socket closed MarketDepths. Reason: {e.Reason}", LogMessageType.System);
                 Disconnect();
 
                 SendLogMessage($"Public MarketDeptns WebSocket closed by AscendexSpot. Code:{e.Code}", LogMessageType.Error);
@@ -1531,13 +1526,30 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private void WebSocketPublicMarketDepthsNew_OnError(object sender, ErrorEventArgs e)///переделать как в битфайнекс
         {
-            if (e.Exception != null)
+            try
             {
-                SendLogMessage(e.Exception.ToString(), LogMessageType.Error);
+                if (ServerStatus == ServerConnectStatus.Disconnect)
+                {
+                    return;
+                }
+
+                if (e.Exception != null)
+                {
+                    string message = e.Exception.ToString();
+
+                    if (message.Contains("The remote party closed the WebSocket connection"))
+                    {
+                        // ignore
+                    }
+                    else
+                    {
+                        SendLogMessage(e.Exception.ToString(), LogMessageType.Error);
+                    }
+                }
             }
-            else
+            catch (Exception exception)
             {
-                SendLogMessage("AscendexSpot WebSocket Public error" + e.ToString(), LogMessageType.Error);
+                SendLogMessage("Data socket error" + exception.ToString(), LogMessageType.Error);
             }
         }
 
@@ -1567,7 +1579,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                SendLogMessage($"{DateTime.Now:HH:mm:ss.fff}Socket closed Private. Reason: {e.Reason}", LogMessageType.System);
+               //// SendLogMessage($"{DateTime.Now:HH:mm:ss.fff}Socket closed Private. Reason: {e.Reason}", LogMessageType.System);
                 Disconnect();
 
                 SendLogMessage($"Connection Closed by AscendexSpot. {e.Code} {e.Reason}. WebSocket Private Closed Event", LogMessageType.Error);
@@ -1628,18 +1640,29 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private void _webSocketPrivate_OnError(object sender, ErrorEventArgs e)
         {
             try
-
             {
-                if (e.Exception != null)
+                if (ServerStatus == ServerConnectStatus.Disconnect)
                 {
-
-                    SendLogMessage($"WebSocket private Error: {e.Exception.Message}", LogMessageType.Error);
+                    return;
                 }
 
+                if (e.Exception != null)
+                {
+                    string message = e.Exception.ToString();
+
+                    if (message.Contains("The remote party closed the WebSocket AscendexSpot connection"))
+                    {
+                        // ignore
+                    }
+                    else
+                    {
+                        SendLogMessage(e.Exception.ToString(), LogMessageType.Error);
+                    }
+                }
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage("Data socket error" + exception.ToString(), LogMessageType.Error);
             }
         }
 
@@ -2797,9 +2820,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     _orderTrackerDict = JsonConvert.DeserializeObject<Dictionary<int, string>>(json1);
                 }
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                SendLogMessage("Error loading dictionary: " + ex.Message, LogMessageType.Error);
+                SendLogMessage("Error loading dictionary: " + exception.Message, LogMessageType.Error);
             }
         }
 
@@ -2820,9 +2843,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string json2 = JsonConvert.SerializeObject(_marketToUserDict, Formatting.Indented);
                 File.WriteAllText("marketToUserDict.json", json2);
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                SendLogMessage("Error while saving : " + ex.Message, LogMessageType.Error);
+                SendLogMessage("Error while saving : " + exception.Message, LogMessageType.Error);
             }
         }
 
@@ -3254,9 +3277,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 MyOrderEvent?.Invoke(orderOnMarket);
 
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                SendLogMessage("GetOrderStatus > Exception: " + ex.Message, LogMessageType.Error);
+                SendLogMessage("GetOrderStatus > Exception: " + exception.Message, LogMessageType.Error);
             }
         }
 
