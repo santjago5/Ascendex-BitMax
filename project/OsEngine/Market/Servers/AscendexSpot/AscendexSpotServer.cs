@@ -150,23 +150,23 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 DisconnectEvent();
             }
         }
-        private List<string> _subscribledSecutiries = new List<string>();
+        private List<string> _subscribedSecutiries = new List<string>();
 
-       
+
         private void CheckSocketsActivate()
         {
-            lock (_socketActivateLocker)
+            try
             {
-                try
+                lock (_socketActivateLocker)
                 {
                     if (_webSocketPrivate == null
-                       || _webSocketPrivate?.ReadyState != WebSocketState.Open)
+                          || _webSocketPrivate?.ReadyState != WebSocketState.Open)
                     {
                         Disconnect();
                         return;
                     }
 
-                    if (_subscribledSecutiries.Count > 0)
+                    if (_subscribedSecutiries.Count > 0)
                     {
                         if (_webSocketPublicMarketDepths.Count == 0
                             || _webSocketPublicMarketDepths == null)
@@ -184,18 +184,16 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             return;
                         }
                     }
-
                     if (ServerStatus != ServerConnectStatus.Connect)
                     {
                         ServerStatus = ServerConnectStatus.Connect;
                         ConnectEvent();
                     }
                 }
-
-                catch (Exception exception)
-                {
-                    SendLogMessage(exception.Message, LogMessageType.Error);
-                }
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -213,7 +211,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
 
             FIFOListWebSocketPublicMarketDepthsMessage = null;
-           // FIFOListWebSocketPublicTradesMessage = null;
+            // FIFOListWebSocketPublicTradesMessage = null;
             FIFOListWebSocketPrivateMessage = null;
 
             Disconnect();
@@ -1044,8 +1042,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private ConcurrentQueue<string> FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
         private ConcurrentQueue<string> FIFOListWebSocketPublicMarketDepthsMessage = new ConcurrentQueue<string>();
-      //
-      //rivate ConcurrentQueue<string> FIFOListWebSocketPublicTradesMessage = new ConcurrentQueue<string>();
+        //
+        //rivate ConcurrentQueue<string> FIFOListWebSocketPublicTradesMessage = new ConcurrentQueue<string>();
 
         //private List<WebSocket> _webSocketPublicTrades = new List<WebSocket>();
         private List<WebSocket> _webSocketPublicMarketDepths = new List<WebSocket>();
@@ -1125,7 +1123,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 webSocketPublicMarketDepthsNew.OnClose += WebSocketPublicMarketDepthsNew_OnClose;
                 webSocketPublicMarketDepthsNew.OnMessage += WebSocketPublicMarketDepthsNew_OnMessage;
                 webSocketPublicMarketDepthsNew.OnError += WebSocketPublicMarketDepthsNew_OnError;
-                webSocketPublicMarketDepthsNew.Connect();
+                webSocketPublicMarketDepthsNew.Connect().Wait();
 
                 return webSocketPublicMarketDepthsNew;
             }
@@ -1303,7 +1301,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 _webSocketPrivate.OnMessage += _webSocketPrivate_OnMessage;
                 _webSocketPrivate.OnError += _webSocketPrivate_OnError;
 
-                _webSocketPrivate.Connect();
+                _webSocketPrivate.Connect().Wait();
 
             }
             catch (Exception exception)
@@ -1328,7 +1326,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                         if (webSocketPublicMarketDepthsNew.ReadyState == WebSocketState.Open)
                         {
-                            webSocketPublicMarketDepthsNew.CloseAsync();
+                            webSocketPublicMarketDepthsNew.CloseAsync().Wait();
 
                         }
                         webSocketPublicMarketDepthsNew.Dispose();
@@ -1387,7 +1385,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     _webSocketPrivate.OnMessage -= _webSocketPrivate_OnMessage;
                     _webSocketPrivate.OnError -= _webSocketPrivate_OnError;
 
-                    _webSocketPrivate.CloseAsync();
+                    _webSocketPrivate.CloseAsync().Wait(); 
                     //_lastPrivateDisconnectTime = DateTime.UtcNow;
 
 
@@ -1579,7 +1577,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-               //// SendLogMessage($"{DateTime.Now:HH:mm:ss.fff}Socket closed Private. Reason: {e.Reason}", LogMessageType.System);
+                //// SendLogMessage($"{DateTime.Now:HH:mm:ss.fff}Socket closed Private. Reason: {e.Reason}", LogMessageType.System);
                 Disconnect();
 
                 SendLogMessage($"Connection Closed by AscendexSpot. {e.Code} {e.Reason}. WebSocket Private Closed Event", LogMessageType.Error);
@@ -1801,7 +1799,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         return;
                     }
 
-                   
+
                     if (ServerStatus != ServerConnectStatus.Connect)
                     {
                         ServerStatus = ServerConnectStatus.Connect;
@@ -1906,7 +1904,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private DateTime _lastSocketCreateTime = DateTime.MinValue;
         private bool _isPrivateSubscribed = false;
-        private  object _socketCreationLock = new object();
+        private object _socketCreationLock = new object();
 
 
 
@@ -1940,7 +1938,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 // Получаем последний сокет для стаканов и трейдов
                 WebSocket webSocketPublicMarketDepths = _webSocketPublicMarketDepths[_webSocketPublicMarketDepths.Count - 1];
-              //  WebSocket webSocketPublicTrades = _webSocketPublicTrades[_webSocketPublicTrades.Count - 1];
+                //  WebSocket webSocketPublicTrades = _webSocketPublicTrades[_webSocketPublicTrades.Count - 1];
 
                 int MaxWebSocketCount = 18;      // Максимум сокетов на тип
                 int MaxSubsPerSocket = 140;       // Подписок на один сокет
@@ -1949,13 +1947,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 int currentSocketInstrumentCount = _subscribedSecurities.Count % MaxSubsPerSocket;
 
                 // Если достигли лимита — создаём новые сокеты
-                if (webSocketPublicMarketDepths.ReadyState == WebSocketState.Open 
-                // &&   webSocketPublicTrades.ReadyState == WebSocketState.Open 
+                if (webSocketPublicMarketDepths.ReadyState == WebSocketState.Open
+                   // &&   webSocketPublicTrades.ReadyState == WebSocketState.Open 
                    && currentSocketInstrumentCount == 0)
                 {
                     lock (_socketCreationLock)
                     {
-                        if (_webSocketPublicMarketDepths.Count >= MaxWebSocketCount 
+                        if (_webSocketPublicMarketDepths.Count >= MaxWebSocketCount
                             //||_webSocketPublicTrades.Count >= MaxWebSocketCount
                             )
                         {
@@ -2016,7 +2014,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 // Получаем индексы сокетов для логов
                 int socketIndexDepth = _webSocketPublicMarketDepths.IndexOf(webSocketPublicMarketDepths);
-               // int socketIndexTrade = _webSocketPublicTrades.IndexOf(webSocketPublicTrades);
+                // int socketIndexTrade = _webSocketPublicTrades.IndexOf(webSocketPublicTrades);
                 int subCount = _subscribedSecurities.Count;
 
                 // Отправка подписок
@@ -2033,7 +2031,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     //Thread.Sleep(2000);
                     SendLogMessage($"{DateTime.Now:HH:mm:ss.fff} Подписка на стакан: {security.Name} [socket #{socketIndexDepth}, подписок: {subCount}]", LogMessageType.System);
                     webSocketPublicMarketDepths.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
-                   
+
                     //  _rateGateSubscribed.WaitToProceed();
                     //webSocketPublicTrades.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
                     //Thread.Sleep(2000);

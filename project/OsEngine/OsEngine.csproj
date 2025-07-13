@@ -103,6 +103,10 @@
     <PackageReference Include="Grpc.Core.Api" Version="2.71.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="QUIKSharp" Version="2.0.0" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.1.118">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
     <PackageReference Include="System.ServiceModel.Syndication" Version="9.0.5" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.5" />

@@ -1,0 +1,42 @@
+# .editorconfig for C#
+root = true
+
+[*.cs]
+# Отступы
+indent_style = space
+indent_size = 4
+tab_width = 4
+insert_final_newline = true
+charset = utf-8
+
+# Форматирование скобок
+csharp_new_line_before_open_brace = all
+
+# Отступы для блоков
+csharp_indent_block_contents = true
+csharp_indent_braces = false
+csharp_indent_case_contents = true
+csharp_indent_case_contents_when_block = true
+csharp_indent_switch_labels = true
+
+# Стиль скобок
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+# Отключить var везде — использовать явный тип
+csharp_style_var_for_built_in_types = false:error
+csharp_style_var_when_type_is_apparent = false:error
+csharp_style_var_elsewhere = false:error
+
+# Отступы между элементами
+dotnet_diagnostic.SA1516.severity = warning   # Пустая строка между полями/методами
+dotnet_diagnostic.SA1505.severity = warning   # Открывающая скобка должна быть на новой строке
+dotnet_diagnostic.SA1507.severity = warning   # Одна пустая строка между блоками,# Запрещает более одной пустой строки подряд
+
+# Пробелы
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_method_call_parameter_list_parentheses = false
+
+# Обработка using
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = true
