@@ -31,6 +31,7 @@ csharp_style_var_elsewhere = false:error
 dotnet_diagnostic.SA1516.severity = warning   # Пустая строка между полями/методами
 dotnet_diagnostic.SA1505.severity = warning   # Открывающая скобка должна быть на новой строке
 dotnet_diagnostic.SA1507.severity = warning   # Одна пустая строка между блоками,# Запрещает более одной пустой строки подряд
+dotnet_diagnostic.SA1513.severity = suggestion # Обязательная пустая строка перед return
 
 # Пробелы
 csharp_space_after_keywords_in_control_flow_statements = true
