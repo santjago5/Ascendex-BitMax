@@ -406,7 +406,6 @@
 //            {
 //                _rateGatePortfolio.WaitToProceed();
 
-//                _portfolios.Clear(); // очищаем старые данные
 
 //                string accountGroup = GetAccountGroup();
 //                string fullPath = $"/{accountGroup}/api/pro/v1/{_accountCategory}/balance";
@@ -498,14 +497,9 @@
 
 //        //public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
 //        //{
-//        //    string timeFrame = GetInterval(tf);  // Интервал в формате API
-//        //    int limit = 480;                     // Лимит за 1 запрос
 
-//        //    List<Candle> allCandles = new List<Candle>(); // Общий список свечей
-//        //    HashSet<DateTime> uniqueTimes = new HashSet<DateTime>(); // Для исключения дубликатов
 
 //        //    int candlesLoaded = 0;
-//        //    DateTime periodEnd = timeEnd; // Начнем с заданного конца
 
 
 //        //    if (periodEnd > DateTime.UtcNow)
@@ -514,19 +508,15 @@
 //        //    }
 //        //    while (candlesLoaded < countToLoad)
 //        //    {
-//        //        // Сколько свечей нужно запросить в этой итерации
 //        //        int candlesToLoad = Math.Min(limit, countToLoad - candlesLoaded);
 
-//        //        // Получаем порцию свечей до periodEnd
 //        //        List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, periodEnd, candlesToLoad);
 
-//        //        // Если ошибка или пусто — прекращаем
 //        //        if (rangeCandles == null || rangeCandles.Count == 0)
 //        //        {
 //        //            break;
 //        //        }
 
-//        //        // Добавляем только уникальные свечи
 //        //        for (int i = 0; i < rangeCandles.Count; i++)
 //        //        {
 //        //            if (uniqueTimes.Add(rangeCandles[i].TimeStart))
@@ -537,17 +527,14 @@
 
 //        //        candlesLoaded += rangeCandles.Count;
 
-//        //        // Следующий "конец" периода — начало первой свечи из этого блока
 //        //        periodEnd = rangeCandles[0].TimeStart;
 
-//        //        // Если ушли раньше нужного диапазона — завершаем
 //        //        if (periodEnd <= timeEnd - TimeSpan.FromMinutes(tf.TotalMinutes * countToLoad))
 //        //        {
 //        //            break;
 //        //        }
 //        //    }
 
-//        //    // Удаляем свечи позже указанного времени
 //        //    for (int i = allCandles.Count - 1; i >= 0; i--)
 //        //    {
 //        //        if (allCandles[i].TimeStart > timeEnd)
@@ -556,7 +543,6 @@
 //        //        }
 //        //    }
 
-//        //    // Сортировка на случай, если порядок сбился
 //        //    allCandles.Sort((a, b) => a.TimeStart.CompareTo(b.TimeStart));
 
 //        //    return allCandles;
@@ -564,42 +550,31 @@
 
 //        public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
 //        {
-//            // Преобразуем таймфрейм в строку (например: "1", "5", "1d")
 //            string timeFrame = GetInterval(tf);
 
-//            // Ограничение сервера: максимум 480 свечей за раз
 //            int limit = 480;
 
-//            // Список всех свечей
 //            List<Candle> allCandles = new List<Candle>();
 
-//            // Для исключения дубликатов по времени
 //            HashSet<DateTime> uniqueTimes = new HashSet<DateTime>();
 
-//            // Кол-во загруженных свечей
 //            int candlesLoaded = 0;
 
-//            // Конечная точка текущего запроса
 //            DateTime periodEnd = timeEnd;
 
-//            // Начальная граница диапазона
 //            DateTime periodStart = timeEnd.AddMinutes(-countToLoad * tf.TotalMinutes);
 
 //            while (candlesLoaded < countToLoad)
 //            {
-//                // Сколько осталось загрузить
 //                int candlesToLoad = Math.Min(limit, countToLoad - candlesLoaded);
 
-//                // Загружаем следующую порцию
 //                List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, periodEnd, candlesToLoad);
 
-//                // Если пришёл null или пусто — выходим
 //                if (rangeCandles == null || rangeCandles.Count == 0)
 //                {
 //                    break;
 //                }
 
-//                // Добавляем только уникальные свечи
 //                for (int i = 0; i < rangeCandles.Count; i++)
 //                {
 //                    if (uniqueTimes.Add(rangeCandles[i].TimeStart))
@@ -608,20 +583,16 @@
 //                    }
 //                }
 
-//                // Обновляем конец диапазона — на начало первой свечи
 //                periodEnd = rangeCandles[0].TimeStart;
 
-//                // Проверка: если дошли до начала — выходим
 //                if (periodEnd <= periodStart)
 //                {
 //                    break;
 //                }
 
-//                // Увеличиваем счётчик
 //                candlesLoaded += rangeCandles.Count;
 //            }
 
-//            // Удаляем свечи вне запрошенного диапазона
 //            for (int i = allCandles.Count - 1; i >= 0; i--)
 //            {
 //                if (allCandles[i].TimeStart < periodStart || allCandles[i].TimeStart > timeEnd)
@@ -633,7 +604,6 @@
 //            {
 //                return null;
 //            }
-//            // Сортировка по времени
 //            allCandles.Sort((a, b) => a.TimeStart.CompareTo(b.TimeStart));
 
 
@@ -750,7 +720,6 @@
 //        //        {
 //        //            AscendexSpotCandleResponse json = JsonConvert.DeserializeObject<AscendexSpotCandleResponse>(response.Content);
 
-//        //            // Проверка: если объект пустой или вернулся неуспешный код
 //        //            if (json == null || json.code != "0" || json.data == null || json.data.Count == 0)
 //        //            {
 
@@ -1081,33 +1050,23 @@
 //        private DateTime _lastPrivateConnectTime = DateTime.MinValue;
 //        private readonly object _socketReconnectLock = new object();
 
-//        // Метод проверяет, сколько времени прошло с последнего подключения.
-//        // Если меньше минимального интервала — ждёт оставшееся время.
 //        private void WaitUntilReconnectAvailable(ref DateTime lastConnectTime, int minIntervalSeconds, string socketName)
 //        {
-//            // Получаем текущее время
 //            DateTime now = DateTime.UtcNow;
 
-//            // Считаем прошедшие секунды с последнего подключения
 //            double secondsSinceLastConnect = (now - lastConnectTime).TotalSeconds;
 
-//            // Если прошло меньше минимального интервала — ждём
 //            if (secondsSinceLastConnect < minIntervalSeconds)
 //            {
 //                double waitTime = minIntervalSeconds - secondsSinceLastConnect;
 
-//                // Логируем задержку с точностью до сотых
-//                SendLogMessage($"[{socketName}] Задержка перед реконнектом: {waitTime:F2} сек.", LogMessageType.System);
 
-//                // Засыпаем на оставшееся время
 //                Thread.Sleep(TimeSpan.FromSeconds(waitTime));
 //            }
 
-//            // Обновляем время последнего подключения
 //            //lastConnectTime = DateTime.UtcNow;
 //        }
 
-//        int MaxWebSocketCount = 19; //максимум сокетов на ip (>20) после этого бан на 15 минут
 
 
 
@@ -1119,7 +1078,6 @@
 
 //                //lock (_socketReconnectLock)
 //                //{
-//                //    //  ждём, если предыдущий коннект был менее 8 секунд назад
 //                //    WaitUntilReconnectAvailable(ref _lastMarketDepthsConnectTime, _minReconnectIntervalSec, "MarketDepths");
 //                //}
 
@@ -1172,7 +1130,6 @@
 
 //        //        //lock (_socketReconnectLock)
 //        //        //{
-//        //        //    // 🕓 ждём, если предыдущий коннект был менее 8 секунд назад
 //        //        //    WaitUntilReconnectAvailable(ref _lastPublicTradesConnectTime, _minReconnectIntervalSec, "PublicTrades");
 //        //        //}
 
@@ -1287,7 +1244,6 @@
 
 //                //lock (_socketReconnectLock)
 //                //{
-//                //    // 🕓 ждём, если предыдущий коннект был менее 8 секунд назад
 //                //    WaitUntilReconnectAvailable(ref _lastPrivateConnectTime, _minReconnectIntervalSec, "Private");
 //                //}
 
@@ -1415,7 +1371,6 @@
 //        {
 //            int count = 0;
 
-//            // Приватный сокет
 //            if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open)
 //            {
 //                count++;
@@ -1423,7 +1378,6 @@
 
 //            }
 
-//            // Публичные трейды
 //            //for (int i = 0; i < _webSocketPublicTrades.Count; i++)
 //            //{
 //            //    if (_webSocketPublicTrades[i] != null && _webSocketPublicTrades[i].ReadyState == WebSocketState.Open)
@@ -1433,7 +1387,6 @@
 //            //    }
 //            //}
 
-//            // Публичные стаканы
 //            for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
 //            {
 //                if (_webSocketPublicMarketDepths[i] != null && _webSocketPublicMarketDepths[i].ReadyState == WebSocketState.Open)
@@ -1532,7 +1485,6 @@
 //            }
 //        }
 
-//        private void WebSocketPublicMarketDepthsNew_OnError(object sender, ErrorEventArgs e)///переделать как в битфайнекс
 //        {
 //            if (e.Exception != null)
 //            {
@@ -1720,7 +1672,6 @@
 //                        SendLogMessage("CheckActivation: Detected " + open + " sockets. Ascendex limit is 17!", LogMessageType.System);
 //                    }
 
-//                    // Проверка списка MarketDepths
 //                    if (_webSocketPublicMarketDepths.Count == 0)
 
 //                    {
@@ -1744,7 +1695,6 @@
 //                        return;
 //                    }
 
-//                    //// Проверка списка Trades
 //                    //if (_webSocketPublicTrades.Count == 0)
 //                    //{
 //                    //    SendLogMessage("CheckActivation: _webSocketPublicTrades is EMPTY", LogMessageType.System);
@@ -1767,7 +1717,6 @@
 //                    //    Disconnect();
 //                    //    return;
 //                    //}
-//                    // Проверка приватного сокета
 //                    if (_webSocketPrivate == null)
 //                    {
 //                        SendLogMessage("CheckActivation: _webSocketPrivate is NULL", LogMessageType.System);
@@ -1869,7 +1818,6 @@
 
 //        private RateGate _rateGateSubscribed = new RateGate(1, TimeSpan.FromMilliseconds(790));
 
-//        public void Subscrible(Security security)//////ошибка в слове Subscribe
 //        {
 //            try
 //            {
@@ -1894,13 +1842,11 @@
 //        {
 //            try
 //            {
-//                // Проверка статуса подключения
 //                if (ServerStatus == ServerConnectStatus.Disconnect)
 //                {
 //                    return;
 //                }
 
-//                // Проверка на дублирующую подписку
 //                for (int i = 0; i < _subscribedSecurities.Count; i++)
 //                {
 //                    if (_subscribedSecurities[i].Equals(security.Name))
@@ -1909,26 +1855,19 @@
 //                    }
 //                }
 
-//                // Добавляем тикер в список подписанных
 //                _subscribedSecurities.Add(security.Name);
 
-//                // Проверка наличия открытых сокетов
 //                if (_webSocketPublicMarketDepths.Count == 0 /*|| _webSocketPublicTrades.Count == 0*/)
 //                {
 //                    return;
 //                }
 
-//                // Получаем последний сокет для стаканов и трейдов
 //                WebSocket webSocketPublicMarketDepths = _webSocketPublicMarketDepths[_webSocketPublicMarketDepths.Count - 1];
 //                //  WebSocket webSocketPublicTrades = _webSocketPublicTrades[_webSocketPublicTrades.Count - 1];
 
-//                int MaxWebSocketCount = 18;      // Максимум сокетов на тип
-//                int MaxSubsPerSocket = 140;       // Подписок на один сокет
 
-//                // Подсчёт количества подписок в текущем сокете
 //                int currentSocketInstrumentCount = _subscribedSecurities.Count % MaxSubsPerSocket;
 
-//                // Если достигли лимита — создаём новые сокеты
 //                if (webSocketPublicMarketDepths.ReadyState == WebSocketState.Open
 //                   // &&   webSocketPublicTrades.ReadyState == WebSocketState.Open 
 //                   && currentSocketInstrumentCount == 0)
@@ -1945,7 +1884,6 @@
 
 //                        if ((DateTime.Now - _lastSocketCreateTime).TotalSeconds < 10)
 //                        {
-//                            SendLogMessage("Слишком быстрое создание сокета. Подписка остановлена.", LogMessageType.Error);
 //                            return;
 //                        }
 
@@ -1953,14 +1891,11 @@
 
 //                        //   _rateGateSubscribed.WaitToProceed();
 
-//                        SendLogMessage("Ждём перед созданием нового сокета...", LogMessageType.System);
 
-//                        // Создаём новый сокет стаканов
 //                        WebSocket newSocketMarketDepths = CreateNewPublicMarketDepthsSocket();
 
 //                        //Thread.Sleep(2500);
 
-//                        // Ждём открытия
 //                        DateTime timeEndMarketDepths = DateTime.Now.AddSeconds(15);
 //                        while (newSocketMarketDepths.ReadyState != WebSocketState.Open && DateTime.Now < timeEndMarketDepths)
 //                        {
@@ -1971,12 +1906,10 @@
 //                        {
 //                            _webSocketPublicMarketDepths.Add(newSocketMarketDepths);
 //                            webSocketPublicMarketDepths = newSocketMarketDepths;
-//                            SendLogMessage("Новый сокет для стаканов открыт. Всего сокетов: " + _webSocketPublicMarketDepths.Count, LogMessageType.System);
 //                        }
 
 //                        //  Thread.Sleep(2500);
 
-//                        // Создаём новый сокет трейдов
 //                        //WebSocket newSocketTrades = CreateNewPublicTradesSocket();
 
 //                        //DateTime timeEndTrades = DateTime.Now.AddSeconds(15);
@@ -1989,50 +1922,40 @@
 //                        //{
 //                        //    _webSocketPublicTrades.Add(newSocketTrades);
 //                        //    webSocketPublicTrades = newSocketTrades;
-//                        //    SendLogMessage("Новый сокет для трейдов открыт. Всего сокетов: " + _webSocketPublicTrades.Count, LogMessageType.System);
 //                        //}
 //                    }
 //                }
 
-//                // Получаем индексы сокетов для логов
 //                int socketIndexDepth = _webSocketPublicMarketDepths.IndexOf(webSocketPublicMarketDepths);
 //                // int socketIndexTrade = _webSocketPublicTrades.IndexOf(webSocketPublicTrades);
 //                int subCount = _subscribedSecurities.Count;
 
-//                // Отправка подписок
 //                if (webSocketPublicMarketDepths != null /*&& webSocketPublicTrades != null*/)
 //                {
 //                    _rateGateSubscribed.WaitToProceed();
 
 //                    webSocketPublicMarketDepths.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
-//                    //Thread.Sleep(2000); // Ждём перед следующей командой
-//                    SendLogMessage($"{DateTime.Now:HH:mm:ss.fff} Depth-snapshot отправлен для {security.Name} [socket #{socketIndexDepth}]", LogMessageType.System);
 
 //                    //  _rateGateSubscribed.WaitToProceed();
 //                    webSocketPublicMarketDepths.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{security.Name}\"}}");
 //                    //Thread.Sleep(2000);
-//                    SendLogMessage($"{DateTime.Now:HH:mm:ss.fff} Подписка на стакан: {security.Name} [socket #{socketIndexDepth}, подписок: {subCount}]", LogMessageType.System);
 //                    webSocketPublicMarketDepths.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
 
 //                    //  _rateGateSubscribed.WaitToProceed();
 //                    //webSocketPublicTrades.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
 //                    //Thread.Sleep(2000);
-//                    //SendLogMessage($"{DateTime.Now:HH:mm:ss.fff} Подписка на трейды: {security.Name} [socket #{socketIndexTrade}, подписок: {subCount}]", LogMessageType.System);
 
 //                }
 
-//                // Подписка на приватные данные (только один раз)
 //                if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open && !_isPrivateSubscribed)
 //                {
 //                    _rateGateSubscribed.WaitToProceed();
 //                    _webSocketPrivate.Send("{\"op\":\"sub\",\"ch\":\"order:cash\"}");
-//                    SendLogMessage($"{DateTime.Now:HH:mm:ss.fff} Подписка на приватные ордера отправлена", LogMessageType.System);
 //                    _isPrivateSubscribed = true;
 //                }
 //            }
 //            catch (Exception exception)
 //            {
-//                SendLogMessage("Ошибка подписки: " + exception.ToString(), LogMessageType.Error);
 //            }
 //        }
 
@@ -2116,7 +2039,6 @@
 //        //            Thread.Sleep(7000);
 //        //        }
 
-//        //        // ПОДПИСКИ с задержками между отправками
 //        //        if (webSocketPublicMarketDepths != null && webSocketPublicTrades != null)
 //        //        {
 //        //            webSocketPublicMarketDepths.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
@@ -2142,35 +2064,29 @@
 
 
 
-//        // Метод отписки от всех подписок
 //        private void UnsubscribeFromAllWebSockets()
 //        {
 //            try
 //            {
-//                // Проверка статуса подключения
 //                if (ServerStatus == ServerConnectStatus.Disconnect)
 //                {
 //                    return;
 //                }
 
-//                // Отписка от depth по всем публичным WebSocket'ам стакана
 //                for (int i = 0; i < _webSocketPublicMarketDepths.Count; i++)
 //                {
 //                    WebSocket webSocketPublicMarketDepths = _webSocketPublicMarketDepths[i];
 
-//                    // Проверяем, что сокет открыт
 //                    if (webSocketPublicMarketDepths != null && webSocketPublicMarketDepths.ReadyState == WebSocketState.Open)
 //                    {
 //                        try
 //                        {
-//                            // Если есть подписанные инструменты
 //                            if (_subscribedSecurities != null && _subscribedSecurities.Count > 0)
 //                            {
 //                                for (int j = 0; j < _subscribedSecurities.Count; j++)
 //                                {
 //                                    string symbol = _subscribedSecurities[j];
 
-//                                    // Отписка от стакана
 //                                    webSocketPublicMarketDepths.Send($"{{\"op\":\"unsub\",\"ch\":\"depth:{symbol}\"}}");
 //                                }
 //                            }
@@ -2183,29 +2099,24 @@
 //                    }
 //                }
 
-//                //// Отписка от trades по всем публичным WebSocket'ам сделок
 //                //for (int i = 0; i < _webSocketPublicTrades.Count; i++)
 //                //{
 //                //    WebSocket webSocketPublicTrades = _webSocketPublicTrades[i];
 
-//                //    // Проверяем, что сокет открыт
 //                //    if (webSocketPublicTrades != null && webSocketPublicTrades.ReadyState == WebSocketState.Open)
 //                //    {
 //                //        try
 //                //        {
-//                //            // Если есть подписанные инструменты
 //                //            if (_subscribedSecurities != null && _subscribedSecurities.Count > 0)
 //                //            {
 //                //                for (int j = 0; j < _subscribedSecurities.Count; j++)
 //                //                {
 //                //                    string symbol = _subscribedSecurities[j];
 
-//                //                    // Отписка от сделок
 //                //                    webSocketPublicTrades.Send($"{{\"op\":\"unsub\",\"ch\":\"trades:{symbol}\"}}");
 //                //                }
 //                //            }
 
-//                //            // Очищаем словарь сделок
 //                //            //_tradeDictionary.Clear();
 //                //        }
 //                //        catch (Exception exception)
@@ -2215,7 +2126,6 @@
 //                //    }
 //                //}
 
-//                // Отписка от приватных каналов (ордеры)
 //                if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open)
 //                {
 //                    try
@@ -2252,10 +2162,8 @@
 //        public event Action<OptionMarketDataForConnector> AdditionalMarketDataEvent;
 
 
-//        // Обработка стакана: инициализация снапшотом и обновлениями
 //        private Dictionary<string, AscendexSpotDepthResponse> _depths = new Dictionary<string, AscendexSpotDepthResponse>();
 
-//        // Храним все активные MarketDepth по инструментам
 //        private List<MarketDepth> _allDepths = new List<MarketDepth>();
 //        private bool _snapshotInitialized = false;
 //        private long _lastSeqNum = -1;
@@ -2268,20 +2176,16 @@
 //            {
 //                AscendexSpotDepthMessage snapshot = JsonConvert.DeserializeObject<AscendexSpotDepthMessage>(message);
 
-//                // Если данные некорректны — выходим
 //                if (snapshot == null || snapshot.data == null)
 //                    return;
 
-//                // Обновляем текущий seqnum и флаг инициализации
 //                _lastSeqNum = Convert.ToInt64(snapshot.data.seqnum);
 //                _snapshotInitialized = true;
 
-//                // Создаем новый объект стакана
 //                MarketDepth newDepth = new MarketDepth();
 //                newDepth.SecurityNameCode = snapshot.symbol;
 //                newDepth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(snapshot.data.ts));
 
-//                // Добавляем уровни BID (покупки)
 
 //                for (int i = 0; i < snapshot.data.bids.Count && i < 25; i++)
 //                {
@@ -2293,7 +2197,6 @@
 //                    });
 //                }
 
-//                // Добавляем уровни ASK (продажи)
 //                for (int i = 0; i < snapshot.data.asks.Count && i < 25; i++)
 //                {
 //                    var level = snapshot.data.asks[i];
@@ -2306,7 +2209,6 @@
 
 //                newDepth.Time = DateTime.UtcNow;
 
-//                // если текущее время меньше или равно предыдущему — увеличиваем _lastTimeMd
 //                if (newDepth.Time <= _lastTimeMd)
 //                {
 //                    _lastTimeMd = _lastTimeMd.AddTicks(1);
@@ -2317,7 +2219,6 @@
 //                    _lastTimeMd = newDepth.Time;
 //                }
 
-//                // Обновляем локальное хранилище стаканов
 //                var needDepth = _allDepths.Find(d => d.SecurityNameCode == newDepth.SecurityNameCode);
 
 //                if (needDepth != null)
@@ -2340,15 +2241,12 @@
 
 //        }
 
-//        // Метод обновления стакана по дельте
 //        private void UpdateDepth(string json)
 //        {
 //            try
 //            {
-//                // Десериализуем входящее сообщение
 //                var update = JsonConvert.DeserializeObject<AscendexSpotDepthMessage>(json);
 
-//                // Находим соответствующий стакан
 //                var depth = _allDepths.Find(d => d.SecurityNameCode == update.symbol);
 
 //                if (depth == null)
@@ -2360,7 +2258,6 @@
 //                if (!_snapshotInitialized) return;
 
 
-//                // Проверка: если seqnum пропущен — нужно обновить снапшот
 //                if (_lastSeqNum != -1 && Convert.ToInt64(update.data.seqnum) != _lastSeqNum + 1)
 //                {
 //                    _snapshotInitialized = false;
@@ -2386,7 +2283,6 @@
 
 //                _lastTimeMd = depth.Time;
 
-//                // Применяем изменения
 //                ApplyLevels(update.data.bids, depth.Bids, isBid: true);
 //                ApplyLevels(update.data.asks, depth.Asks, isBid: false);
 
@@ -2402,7 +2298,6 @@
 //                }
 //                depth.Bids = topBids;
 
-//                // Сортировка асков по возрастанию и обрезка до 25
 //                depth.Asks.Sort((a, b) => a.Price.CompareTo(b.Price));
 
 //                List<MarketDepthLevel> topAsks = new List<MarketDepthLevel>();
@@ -2425,12 +2320,10 @@
 //        }
 
 
-//        // Метод запроса снапшота стакана
 //        private void RequestSnapshot(string symbol)
 //        {
 //            WebSocket webSocketPublicMarketDepths = _webSocketPublicMarketDepths[_webSocketPublicMarketDepths.Count - 1];
 
-//            // Проверка, открыт ли сокет
 //            if (webSocketPublicMarketDepths.ReadyState == WebSocketState.Open)
 //            {
 //                webSocketPublicMarketDepths.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{symbol}\"}}}}");
@@ -2438,7 +2331,6 @@
 //        }
 
 
-//        // Метод применяет список изменений к уровням стакана
 //        private void ApplyLevels(List<List<string>> updates, List<MarketDepthLevel> levels, bool isBid)
 //        {
 //            for (int i = 0; i < updates.Count; i++)
@@ -2478,7 +2370,6 @@
 //                levels.Sort((a, b) => a.Price.CompareTo(b.Price));
 //        }
 
-//        // Вставка уровня вручную (если потребуется)
 //        private void InsertLevel(decimal price, decimal value, Side side, MarketDepth marketDepth)
 //        {
 //            var levels = side == Side.Buy ? marketDepth.Bids : marketDepth.Asks;
@@ -2501,7 +2392,6 @@
 //            }
 //        }
 
-//        // Удаление уровня по цене
 //        private void DeleteLevel(decimal price, Side side, MarketDepth marketDepth)
 //        {
 //            var levels = side == Side.Buy ? marketDepth.Bids : marketDepth.Asks;
@@ -2510,13 +2400,11 @@
 //                levels.Remove(level);
 //        }
 
-//        // Сортировка BID — по убыванию цены
 //        private void SortBids(List<MarketDepthLevel> levels)
 //        {
 //            levels.Sort((a, b) => b.Price.CompareTo(a.Price));
 //        }
 
-//        // Сортировка ASK — по возрастанию цены
 //        private void SortAsks(List<MarketDepthLevel> levels)
 //        {
 //            levels.Sort((a, b) => a.Price.CompareTo(b.Price));
@@ -2572,7 +2460,6 @@
 //        //        }
 
 
-//        //        //// Обрабатываем все сделки в цикле
 //        //        //for (int i = 0; i < response.data.Count; i++)
 //        //        //{
 //        //        //    AscendexSpotQueryOrderMessage item = response.data[i];
@@ -2757,20 +2644,16 @@
 //                LoadOrderTrackers();
 //            }
 
-//            // Проверяем наличие ключа в словаре
 //            if (_orderTrackerDict.ContainsKey(userOrderNumber))
 //            {
-//                // Возвращаем значение — это OrderId с биржи
 //                return _orderTrackerDict[userOrderNumber];
 //            }
 
-//            // Если такого ключа нет — возвращаем null или пустую строку
 //            return null;
 //        }
 
 //        private int GetUserOrderNumber(string marketOrderId)
 //        {
-//            // Если словарь пуст, загружаем из файла
 //            if (_marketToUserDict.Count == 0)
 //            {
 //                LoadOrderTrackers();
@@ -2788,12 +2671,10 @@
 //        private void LoadOrderTrackers()
 //        {
 //            try
-//            {// Загрузка MarketOrderId → NumberUser
 //                if (File.Exists("marketToUserDict.json"))
 //                {
 //                    string json = File.ReadAllText("marketToUserDict.json");
 //                    _marketToUserDict = JsonConvert.DeserializeObject<Dictionary<string, int>>(json);
-//                }// Загрузка NumberUser → MarketOrderId
 //                if (File.Exists("orderTrackerDict.json"))
 //                {
 //                    string json1 = File.ReadAllText("orderTrackerDict.json");
@@ -2815,11 +2696,9 @@
 //                    return;
 //                }
 
-//                // Сохраняем словарь NumberUser → MarketOrderId
 //                string json1 = JsonConvert.SerializeObject(_orderTrackerDict, Formatting.Indented);
 //                File.WriteAllText("orderTrackerDict.json", json1);
 
-//                // Сохраняем словарь MarketOrderId → NumberUser
 //                string json2 = JsonConvert.SerializeObject(_marketToUserDict, Formatting.Indented);
 //                File.WriteAllText("marketToUserDict.json", json2);
 //            }
@@ -3206,7 +3085,6 @@
 //                    if (string.IsNullOrWhiteSpace(order.NumberMarket))
 //                    {
 //                        //order.NumberMarket = GetUserOrderNumber();
-//                        // SendLogMessage("GetOrderStatus > Не удалось найти NumberMarket по NumberUser: " + order.NumberUser, LogMessageType.Error);
 //                        return;
 //                    }
 //                }
@@ -3244,7 +3122,6 @@
 
 //                //if (orderOnMarket == null)
 //                //{
-//                // Последняя попытка — прямой запрос на сервер
 
 //                orderOnMarket = GetOrderStatusById(order.NumberMarket);
 
@@ -3631,16 +3508,13 @@
 
 //            LogMessageEvent(message, messageType);
 
-//            // Формируем строку с датой, временем и типом лога
 //            string logLine = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") +
 //                             " [" + messageType.ToString() + "] " + message;
 
 //            try
 //            {
-//                // Путь к лог-файлу (в корне запуска программы)
 //                string logFilePath = "AscendexSpot_log.txt";
 
-//                // Добавляем строку в файл
 //                File.AppendAllText(logFilePath, logLine + Environment.NewLine);
 //            }
 //            catch (Exception exception) { }
