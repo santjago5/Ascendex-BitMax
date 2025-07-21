@@ -136,7 +136,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 lock (_socketActivateLocker)
                 {
-                    if (_webSocketPrivate == null || 
+                    if (_webSocketPrivate == null ||
                         _webSocketPrivate?.ReadyState != WebSocketState.Open)
                     {
                         Disconnect();
@@ -154,7 +154,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                         WebSocket webSocketPublic = _webSocketPublicMarketDepths[0];
 
-                        if (webSocketPublic == null || 
+                        if (webSocketPublic == null ||
                             webSocketPublic?.ReadyState != WebSocketState.Open)
                         {
                             Disconnect();
