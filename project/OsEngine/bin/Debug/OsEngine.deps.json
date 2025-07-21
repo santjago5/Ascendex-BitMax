@@ -15,6 +15,7 @@
           "Microsoft.CodeAnalysis.CSharp": "4.13.0",
           "Newtonsoft.Json": "13.0.3",
           "QUIKSharp": "2.0.0",
+          "StyleCop.Analyzers": "1.1.118",
           "System.Runtime.CompilerServices.Unsafe": "6.1.2",
           "System.ServiceModel.Duplex": "6.0.0",
           "System.ServiceModel.Federation": "8.1.2",
@@ -235,6 +236,7 @@
           }
         }
       },
+      "StyleCop.Analyzers/1.1.118": {},
       "System.Buffers/4.5.1": {},
       "System.Collections/4.3.0": {
         "dependencies": {
@@ -775,6 +777,13 @@
       "sha512": "sha512-yRpmbnxcOVsiq4LHgvRjmhkI+wQIATZ7qM5SDqrcjT4J2SmdguGwC0IZx5R+AjPBPXP3TiT2Av3zS6U7VC85tw==",
       "path": "quiksharp/2.0.0",
       "hashPath": "quiksharp.2.0.0.nupkg.sha512"
+    },
+    "StyleCop.Analyzers/1.1.118": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-Onx6ovGSqXSK07n/0eM3ZusiNdB6cIlJdabQhWGgJp3Vooy9AaLS/tigeybOJAobqbtggTamoWndz72JscZBvw==",
+      "path": "stylecop.analyzers/1.1.118",
+      "hashPath": "stylecop.analyzers.1.1.118.nupkg.sha512"
     },
     "System.Buffers/4.5.1": {
       "type": "package",

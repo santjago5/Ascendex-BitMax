@@ -239,7 +239,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 _rateGateSecurity.WaitToProceed();
 
-                string _apiPath = "api/pro/v1/cash/products";
+                string _apiPath = $"api/pro/v1/{_accountCategory}/products";
 
                 IRestResponse response = CreatePublicQuery(_apiPath, Method.GET/*, _myProxy*/);
 
@@ -861,6 +861,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         UpdateDepth(message);
                     }
+                    if (message.Contains("\"m\":\"trades\""))
+                    {
+                        UpdateTrade(message);
+                    }
                 }
                 catch (Exception exception)
                 {
@@ -976,6 +980,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         }
 
         private ConcurrentQueue<string> FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
+
         private ConcurrentQueue<string> FIFOListWebSocketPublicMarketDepthsMessage = new ConcurrentQueue<string>();
         //
         //rivate ConcurrentQueue<string> FIFOListWebSocketPublicTradesMessage = new ConcurrentQueue<string>();
@@ -1404,7 +1409,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     if (e.Data.Contains("\"type\":\"unauth\""))
                     {
-                        SendLogMessage("WebSocket MarketDepth opened", LogMessageType.System);///system
+                        SendLogMessage("WebSocket MarketDepth opened", LogMessageType.System);
                     }
 
                     return;
@@ -1476,11 +1481,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 if (ServerStatus == ServerConnectStatus.Disconnect)
                 {
                     GenerateAuthenticate();
+
                     CheckActivationSockets();
-
-                    SendLogMessage("Private socket fully OPEN. Open sockets: " + CountOpenSockets(), LogMessageType.System);
-
-                    SendLogMessage("Connection to private data is Open", LogMessageType.System);///system
                 }
             }
             catch (Exception exception)
@@ -1493,7 +1495,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                //// SendLogMessage($"{DateTime.Now:HH:mm:ss.fff}Socket closed Private. Reason: {e.Reason}", LogMessageType.System);
                 Disconnect();
 
                 SendLogMessage($"Connection Closed by AscendexSpot. {e.Code} {e.Reason}. WebSocket Private Closed Event", LogMessageType.Error);
@@ -1916,24 +1917,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     _rateGateSubscribed.WaitToProceed();
 
                     webSocketPublicMarketDepths.Send($"{{\"op\":\"req\",\"action\":\"depth-snapshot\",\"args\":{{\"symbol\":\"{security.Name}\"}}}}");
-                    SendLogMessage($"{DateTime.Now:HH:mm:ss.fff} Depth-snapshot отправлен для {security.Name} [socket #{socketIndexDepth}]", LogMessageType.System);
-
-                    //  _rateGateSubscribed.WaitToProceed();
                     webSocketPublicMarketDepths.Send($"{{\"op\":\"sub\",\"ch\":\"depth:{security.Name}\"}}");
-                    //Thread.Sleep(2000);
-                    SendLogMessage($"{DateTime.Now:HH:mm:ss.fff} Подписка на стакан: {security.Name} [socket #{socketIndexDepth}, подписок: {subCount}]", LogMessageType.System);
                     webSocketPublicMarketDepths.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
-
-                    //  _rateGateSubscribed.WaitToProceed();
-                    //webSocketPublicTrades.Send($"{{\"op\":\"sub\",\"ch\":\"trades:{security.Name}\"}}");
-                    //Thread.Sleep(2000);
                 }
 
                 if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open && !_isPrivateSubscribed)
                 {
                     _rateGateSubscribed.WaitToProceed();
                     _webSocketPrivate.Send("{\"op\":\"sub\",\"ch\":\"order:cash\"}");
-                    SendLogMessage($"{DateTime.Now:HH:mm:ss.fff} Подписка на приватные ордера отправлена", LogMessageType.System);
                     _isPrivateSubscribed = true;
                 }
             }
@@ -2145,8 +2136,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         public event Action<OptionMarketDataForConnector> AdditionalMarketDataEvent;
 
-        private Dictionary<string, AscendexSpotDepthResponse> _depths = new Dictionary<string, AscendexSpotDepthResponse>();
-
         private List<MarketDepth> _allDepths = new List<MarketDepth>();
 
         private bool _snapshotInitialized = false;
@@ -2274,6 +2263,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 depth.Bids.Sort((a, b) => b.Price.CompareTo(a.Price));
 
                 List<MarketDepthLevel> topBids = new List<MarketDepthLevel>();
+
                 for (int i = 0; i < depth.Bids.Count && i < 25; i++)
                 {
                     topBids.Add(depth.Bids[i]);
@@ -2283,6 +2273,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 depth.Asks.Sort((a, b) => a.Price.CompareTo(b.Price));
 
                 List<MarketDepthLevel> topAsks = new List<MarketDepthLevel>();
+
                 for (int i = 0; i < depth.Asks.Count && i < 25; i++)
                 {
                     topAsks.Add(depth.Asks[i]);
@@ -2724,7 +2715,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                                   $"}}";
                 }
 
-                string fullPath = $"/{accountGroup}/api/pro/v1/cash/order";
+                string fullPath = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order";
                 string prehashPath = "order";
 
                 IRestResponse request = CreatePrivateQuery(fullPath, prehashPath, body, Method.POST);
@@ -2825,7 +2816,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string accountGroup = GetAccountGroup();
 
-                string path = $"/{accountGroup}/api/pro/v1/cash/order";
+                string path = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order";
                 string prehashPath = "order";
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 string body;
@@ -2958,7 +2949,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string accountGroup = GetAccountGroup();
 
-                string path = $"/{accountGroup}/api/pro/v1/cash/order/open";
+                string path = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order/open";
                 string prehashPath = "order/open";
 
                 IRestResponse response = CreatePrivateQuery(path, prehashPath, null, Method.GET/*, _myProxy*/);
@@ -3127,7 +3118,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string accountGroup = GetAccountGroup();
 
-                string path = $"/{accountGroup}/api/pro/v1/cash/order/status?orderId={NumberMarket}";
+                string path = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order/status?orderId={NumberMarket}";
                 string prehashPath = "order/status";
 
                 IRestResponse request = CreatePrivateQuery(path, prehashPath, null, Method.GET);
@@ -3257,7 +3248,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string accountGroup = GetAccountGroup();
 
-                string path = $"/{accountGroup}/api/pro/v1/cash/order/hist/current";
+                string path = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order/hist/current";
                 string prehashPath = "order/hist/current";
 
                 IRestResponse response = CreatePrivateQuery(path, prehashPath, null, Method.GET);
