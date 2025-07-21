@@ -241,7 +241,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string _apiPath = $"api/pro/v1/{_accountCategory}/products";
 
-                IRestResponse response = CreatePublicQuery(_apiPath, Method.GET/*, _myProxy*/);
+                IRestResponse response = CreatePublicQuery(_apiPath, Method.GET);
 
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
@@ -849,7 +849,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     }
                     else if (message.Contains("\"m\":\"error\""))
                     {
-                        SendLogMessage($"Error  websocketDepth -{message}", LogMessageType.Error);
+                        SendLogMessage($"Error  websocketPublic -{message}", LogMessageType.Error);
                         continue;
                     }
 
