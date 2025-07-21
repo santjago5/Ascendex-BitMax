@@ -103,6 +103,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         FIFOListWebSocketPublicMarketDepthsMessage = new ConcurrentQueue<string>();
                         FIFOListWebSocketPrivateMessage = new ConcurrentQueue<string>();
+
+                        CreatePublicWebSocketMarketDepthsConnect();
                         CreatePrivateWebSocketConnect();
                         CheckSocketsActivate();
 
@@ -1800,11 +1802,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 _rateGateSubscribed.WaitToProceed();
 
-                if (_webSocketPublicMarketDepths == null || _webSocketPublicMarketDepths.Count == 0)
-                {
-                    CreatePublicWebSocketMarketDepthsConnect();
-                    Thread.Sleep(1000); 
-                }
+                //if (_webSocketPublicMarketDepths == null || _webSocketPublicMarketDepths.Count == 0)
+                //{
+                //    CreatePublicWebSocketMarketDepthsConnect();
+                //    Thread.Sleep(1000); 
+                //}
 
                 CreateSubscribeMessageWebSocket(security);
                 Thread.Sleep(100);
