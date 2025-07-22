@@ -86,8 +86,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
-                _accountGroup = GetAccountGroup();
-
                 _rateGateConnect.WaitToProceed();
 
                 string _apiPath = "/api/pro/v2/assets";
@@ -113,6 +111,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         CheckSocketsActivate();
 
                         SendLogMessage("Start AscendexSpot Connection", LogMessageType.System);
+
+                        _accountGroup=GetAccountGroup();
                     }
                     else
                     {
