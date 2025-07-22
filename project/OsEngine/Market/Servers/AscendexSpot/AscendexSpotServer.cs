@@ -65,10 +65,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             threadCheckAliveWebSocket.Start();
         }
 
-        public DateTime ServerTime { get; set; }
-
-        private RateGate _rateGateConnect = new RateGate(1, TimeSpan.FromSeconds(5));
-
         private WebProxy _myProxy;
 
         public void Connect(WebProxy proxy = null)
@@ -121,7 +117,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
                 else
                 {
-                    SendLogMessage($"No connection to AscendExSpot server. Code:{response.StatusCode}, Error:{response.Content}", LogMessageType.Error);
+                    SendLogMessage($"No connection to AscendexSpot server. Code:{response.StatusCode}, Error:{response.Content}", LogMessageType.Error);
                     ServerStatus = ServerConnectStatus.Disconnect;
                     DisconnectEvent();
                 }
@@ -133,8 +129,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 DisconnectEvent();
             }
         }
-
-        private List<string> _subscribedSecutiries = new List<string>();
 
         private void CheckSocketsActivate()
         {
@@ -207,6 +201,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 DisconnectEvent();
             }
         }
+
+        public DateTime ServerTime { get; set; }
+
+        private RateGate _rateGateConnect = new RateGate(1, TimeSpan.FromSeconds(5));
+
+        private List<string> _subscribedSecutiries = new List<string>();
 
         public ServerType ServerType
         {
@@ -343,7 +343,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Error : {exception.Message}", LogMessageType.Error);
             }
 
             return string.Empty;
@@ -384,7 +384,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 _rateGatePortfolio.WaitToProceed();
 
-                _portfolios.Clear(); // очищаем старые данные
+                _portfolios.Clear();
 
                 string accountGroup = GetAccountGroup();
                 string fullPath = $"/{accountGroup}/api/pro/v1/{_accountCategory}/balance";
@@ -424,7 +424,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -622,7 +622,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 timeFrameMinutes == 30 ||
                 timeFrameMinutes == 60 ||
                 timeFrameMinutes == 120 ||
-                timeFrameMinutes == 240 |
+                timeFrameMinutes == 240 ||
                 timeFrameMinutes == 1440)
             {
                 return true;
@@ -875,7 +875,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 catch (Exception exception)
                 {
                     Thread.Sleep(5000);
-                    SendLogMessage(exception.ToString(), LogMessageType.Error);
+                    SendLogMessage(exception.Message, LogMessageType.Error);
                 }
             }
         }
@@ -980,7 +980,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 catch (Exception exception)
                 {
                     Thread.Sleep(5000);
-                    SendLogMessage(exception.ToString(), LogMessageType.Error);
+                    SendLogMessage(exception.Message, LogMessageType.Error);
                 }
             }
         }
@@ -1011,7 +1011,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage($"{exception.Message} {exception.StackTrace}", LogMessageType.Error);
+                SendLogMessage($"{exception.Message}", LogMessageType.Error);
             }
         }
 
@@ -1070,7 +1070,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
                 return null;
             }
         }
@@ -1244,7 +1244,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -1320,7 +1320,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -1334,7 +1334,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -1432,7 +1432,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -1446,7 +1446,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -1575,11 +1575,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         ConnectEvent();
                     }
 
-                    SendLogMessage("All sockets activated.", LogMessageType.System);///system
+                    SendLogMessage("All sockets activated.", LogMessageType.System);
                 }
                 catch (Exception exception)
                 {
-                    SendLogMessage("CheckActivation EXCEPTION: " + exception.Message, LogMessageType.Error);
+                    SendLogMessage("CheckActivation exception : " + exception.ToString(), LogMessageType.Error);
                 }
             }
         }
@@ -1737,7 +1737,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         }
                         catch (Exception exception)
                         {
-                            SendLogMessage($"Unsubscribe error on public depth socket: {exception.Message} {exception.StackTrace}", LogMessageType.Error);
+                            SendLogMessage($"Unsubscribe error on public depth socket: {exception.Message}", LogMessageType.Error);
                         }
                     }
                 }
@@ -1750,7 +1750,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     }
                     catch (Exception exception)
                     {
-                        SendLogMessage($"Unsubscribe error on private socket: {exception.Message} {exception.StackTrace}", LogMessageType.Error);
+                        SendLogMessage($"Unsubscribe error on private socket: {exception.Message}", LogMessageType.Error);
                     }
                 }
 
@@ -1760,7 +1760,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage($"General unsubscribe error: {exception.Message} {exception.StackTrace}", LogMessageType.Error);
+                SendLogMessage($"General unsubscribe error: {exception.Message}", LogMessageType.Error);
             }
         }
 
@@ -1935,7 +1935,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Depth of Market update error: " + exception.Message, LogMessageType.Error);
+                SendLogMessage("Depth of Market update error: " + exception.ToString(), LogMessageType.Error);
             }
         }
 
@@ -2058,7 +2058,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -2164,7 +2164,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -2192,7 +2192,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("UpdateMyTrade> Error: " + exception.Message, LogMessageType.Error);
+                SendLogMessage("UpdateMyTrade> Error: " + exception.ToString(), LogMessageType.Error);
             }
         }
 
@@ -2242,7 +2242,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("UpdatePortfolio> Error: " + exception.Message, LogMessageType.Error);
+                SendLogMessage("UpdatePortfolio> Error: " + exception.ToString(), LogMessageType.Error);
             }
         }
 
@@ -2299,7 +2299,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Error loading dictionary: " + exception.Message, LogMessageType.Error);
+                SendLogMessage("Error loading dictionary: " + exception.ToString(), LogMessageType.Error);
             }
         }
 
@@ -2320,7 +2320,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Error while saving : " + exception.Message, LogMessageType.Error);
+                SendLogMessage("Error while saving : " + exception.ToString(), LogMessageType.Error);
             }
         }
 
@@ -2534,7 +2534,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -2580,7 +2580,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
@@ -2659,7 +2659,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
                 return new List<Order>();
             }
         }
@@ -2746,7 +2746,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("GetOrderStatus > Exception: " + exception.Message, LogMessageType.Error);
+                SendLogMessage("GetOrderStatus > Exception: " + exception.ToString(), LogMessageType.Error);
             }
         }
 
@@ -2830,7 +2830,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
                 return new Order();
             }
         }
@@ -2956,7 +2956,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
                 return new List<Order>();
             }
         }
@@ -3086,7 +3086,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage(exception.Message, LogMessageType.Error);
             }
         }
 
