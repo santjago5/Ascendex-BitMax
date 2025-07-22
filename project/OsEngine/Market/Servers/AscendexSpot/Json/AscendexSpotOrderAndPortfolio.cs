@@ -59,8 +59,9 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
 
         [JsonProperty("p")]
         public string price { get; set; }     // order price  "7967.62"— цена ордера
-
-        public string q { get; set; }     // order quantity "0.0083"— запрошенное количество
+     
+        [JsonProperty("q")]
+        public string volume { get; set; }     // order quantity "0.0083"— запрошенное количество
 
         public string qab { get; set; }   // quote asset available balance "793.23"— доступный котируемый актив
 

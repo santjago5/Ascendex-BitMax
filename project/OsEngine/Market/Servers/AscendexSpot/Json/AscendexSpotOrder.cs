@@ -29,7 +29,6 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
 
     }
 
-
     public class AscendexSpotOrderInfo
     {
         public string id { get; set; }               // Id

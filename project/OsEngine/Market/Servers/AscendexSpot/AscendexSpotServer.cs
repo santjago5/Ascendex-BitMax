@@ -16,6 +16,7 @@ using OsEngine.Market.Servers.AscendexSpot.Json;
 using OsEngine.Market.Servers.BitMax;
 using OsEngine.Market.Servers.Entity;
 using RestSharp;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 using Candle = OsEngine.Entity.Candle;
 using CloseEventArgs = OsEngine.Entity.WebSocketOsEngine.CloseEventArgs;
 using ErrorEventArgs = OsEngine.Entity.WebSocketOsEngine.ErrorEventArgs;
@@ -112,7 +113,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                         SendLogMessage("Start AscendexSpot Connection", LogMessageType.System);
 
-                        _accountGroup=GetAccountGroup();
+                        _accountGroup = GetAccountGroup();
                     }
                     else
                     {
@@ -194,6 +195,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
             FIFOListWebSocketPublicMessage = null;
             FIFOListWebSocketPrivateMessage = null;
 
+            _portfolios.Clear();
+            PortfolioEvent?.Invoke(new List<Portfolio>());//???????????
             Disconnect();
         }
 
@@ -231,11 +234,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private string _secretKey = "";
 
+        private string _accountGroup = "";
+
         private string _baseUrl = "https://ascendex.com";
 
         private string _accountCategory = "cash";
 
-        private string _accountGroup = "";
+        private string _portfolioName = "AscendexSpotPortfolio";
+
 
         #endregion
 
@@ -416,7 +422,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     Portfolio portfolio = new Portfolio();
 
-                    portfolio.Number = "AscendexSpotPortfolio";
+                    portfolio.Number = _portfolioName;
                     portfolio.ValueBegin = 1;
                     portfolio.ValueCurrent = 1;
 
@@ -426,7 +432,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         PositionOnBoard position = new PositionOnBoard();
 
-                        position.PortfolioName = "AscendexSpotPortfolio";
+                        position.PortfolioName = _portfolioName;
                         position.SecurityNameCode = wallets.data[i].asset;
                         position.ValueBegin = wallets.data[i].totalBalance.ToDecimal();
                         position.ValueCurrent = wallets.data[i].availableBalance.ToDecimal();
@@ -2162,26 +2168,28 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
                 updateOrder.SecurityNameCode = data.symbol;
                 updateOrder.SecurityClassCode = GetNameClass(data.symbol);
-
                 updateOrder.State = GetOrderState(data.status);
                 updateOrder.NumberMarket = data.orderId;
                 updateOrder.NumberUser = GetUserOrderNumber(data.orderId);
                 updateOrder.Side = data.sd == "Buy" ? Side.Buy : Side.Sell;
                 updateOrder.TypeOrder = (data.orderType == "Limit") ? OrderPriceType.Limit : OrderPriceType.Market;
                 updateOrder.Price = (data.price).ToDecimal();
-                updateOrder.Volume = (data.q).ToDecimal();
+                updateOrder.Volume = (data.volume).ToDecimal();
                 updateOrder.TimeCreate = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(data.t));
                 updateOrder.ServerType = ServerType.AscendexSpot;
-                updateOrder.PortfolioNumber = "AscendexSpotPortfolio";
+                updateOrder.PortfolioNumber = _portfolioName;
 
                 SendLogMessage($" Order send: status {updateOrder.State}, OrderId :{updateOrder.NumberMarket}, User:{updateOrder.NumberUser}  ", LogMessageType.System);
-           
+
                 if (json.data.status == "PartiallyFilled" || json.data.status == "Filled")
                 {
                     UpdateMyTrade(data);
+                    GetPortfolios();
                 }
-
-                UpdatePortfolioFromOrder(data);/////////////надо или нет
+                else
+                {
+                    UpdatePortfolioFromOrder(data);
+                }
 
                 MyOrderEvent?.Invoke(updateOrder);
             }
@@ -2223,18 +2231,24 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                if (data == null)
+                if (data == null || string.IsNullOrEmpty(data.symbol))
                 {
                     return;
                 }
 
-                Portfolio portfolio = new Portfolio();
-                portfolio.Number = "AscendexSpotPortfolio";
-                portfolio.ValueBegin = 1;
-                portfolio.ValueCurrent = 1;
-                portfolio.ServerType = ServerType.AscendexSpot;
+                Portfolio portfolio = _portfolios.Find(p => p.Number == _portfolioName);
 
-                string[] parts = data.symbol.Split('/');
+                if (portfolio == null)
+                {
+                    Portfolio newPortfolio = new Portfolio();
+                    newPortfolio.Number = _portfolioName;
+                    newPortfolio.ValueBegin = 1;
+                    newPortfolio.ValueCurrent = 1;
+                    newPortfolio.ServerType = ServerType.AscendexSpot;
+
+                    _portfolios.Add(portfolio);
+                }
+                    string[] parts = data.symbol.Split('/');
                 if (parts.Length == 2)
                 {
                     string baseAsset = parts[0];
@@ -2258,8 +2272,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     portfolio.SetNewPosition(quotePos);
                 }
-
-                _portfolios.Add(portfolio);
 
                 PortfolioEvent?.Invoke(_portfolios);
             }
@@ -2355,11 +2367,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             try
             {
-                //string accountGroup = GetAccountGroup();
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 string orderSide = order.Side == Side.Buy ? "Buy" : "Sell";
                 string typeOrder = order.TypeOrder == OrderPriceType.Limit ? "Limit" : "Market";
-
+                order.PortfolioNumber = _portfolioName;
+         
                 string body;
 
                 if (typeOrder == "Limit")
@@ -2399,18 +2411,22 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 AscendexSpotOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(request.Content);
 
-                if (response == null || response.code != "0" || response.data == null || response.data.info == null)// if (request.StatusCode == HttpStatusCode.OK && response.code != "0")
+                if (request.StatusCode == HttpStatusCode.OK && response.code != "0")// if (response == null || response.code != "0" /*/*|| response.data == null*/ || response.data.info == null*/)// 
                 {
                     order.State = OrderStateType.Fail;
-                    //MyOrderEvent?.Invoke(order);
+                    SendLogMessage($"SendOrder failed: raw response: {request.Content}", LogMessageType.Error);
+
+                    MyOrderEvent?.Invoke(order);
                     return;
                 }
 
-                if (response != null && response.code == "0" && response.data != null)
+                //if (response != null && response.code == "0" && response.data != null)
+                if (response != null && response.code == "0")
                 {
                     order.NumberMarket = response.data.info.orderId;
+                    order.NumberUser = Convert.ToInt32(response.data.info.id); 
 
-                    if (order.NumberUser != 0)
+                    if (order.NumberMarket != "0")
                     {
                         if (!_orderTrackerDict.ContainsKey(order.NumberUser))
                         {
@@ -2658,7 +2674,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             activeOrder.TypeOrder = order.orderType == "Limit" ? OrderPriceType.Limit : OrderPriceType.Market;
                             activeOrder.Volume = (order.orderQty).ToDecimal();
                             activeOrder.Price = order.price.ToDecimal();
-                            activeOrder.PortfolioNumber = "AscendexSpotPortfolio";
+                            activeOrder.PortfolioNumber = _portfolioName;
 
                             orders.Add(activeOrder);
                         }
@@ -2819,7 +2835,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         order.NumberMarket = orderData.orderId;
                         order.NumberUser = GetUserOrderNumber(orderData.orderId);
                         order.Price = orderData.price.ToDecimal();
-                        order.PortfolioNumber = "AscendexSpotPortfolio";
+                        order.PortfolioNumber = _portfolioName;
                         order.SecurityClassCode = GetNameClass(orderData.symbol);
                         order.Side = orderData.side == "Buy" ? Side.Buy : Side.Sell;
                         order.TypeOrder = orderData.orderType == "Limit" ? OrderPriceType.Limit : OrderPriceType.Market;
@@ -2954,7 +2970,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             historyOrder.State = GetOrderState(order.status);
                             historyOrder.Volume = order.orderQty.ToDecimal();
                             historyOrder.Price = order.price.ToDecimal();
-                            historyOrder.PortfolioNumber = "AscendexSpotPortfolio";
+                            historyOrder.PortfolioNumber = _portfolioName;
                             historyOrder.TypeOrder = order.orderType == "Limit" ? OrderPriceType.Limit : OrderPriceType.Market;
 
                             orders.Add(historyOrder);
