@@ -7,11 +7,13 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using System.Windows.Documents;
 using Newtonsoft.Json;
 using OsEngine.Entity;
 using OsEngine.Language;
 using OsEngine.Logging;
 using OsEngine.Market.Servers.AscendexSpot.Json;
+using OsEngine.Market.Servers.BitMax;
 using OsEngine.Market.Servers.Entity;
 using RestSharp;
 using Candle = OsEngine.Entity.Candle;
@@ -72,7 +74,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             try
             {
                 LoadOrderTrackers();
-
+              
                 _myProxy = proxy;
 
                 _publicKey = ((ServerParameterString)ServerParameters[0]).Value;
@@ -83,6 +85,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     SendLogMessage("Error:Invalid public or secret key.", LogMessageType.Error);
                     return;
                 }
+
+                _accountGroup = GetAccountGroup();
 
                 _rateGateConnect.WaitToProceed();
 
@@ -143,7 +147,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         return;
                     }
 
-                    if (_subscribedSecutiries.Count > 0)
+                    if (_subscribedSecurities.Count > 0)
                     {
                         if (_webSocketPublic.Count == 0 ||
                             _webSocketPublic == null)
@@ -206,8 +210,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private RateGate _rateGateConnect = new RateGate(1, TimeSpan.FromSeconds(5));
 
-        private List<string> _subscribedSecutiries = new List<string>();
-
         public ServerType ServerType
         {
             get { return ServerType.AscendexSpot; }
@@ -232,6 +234,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private string _baseUrl = "https://ascendex.com";
 
         private string _accountCategory = "cash";
+
+        private string _accountGroup = "";
 
         #endregion
 
@@ -319,13 +323,18 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private string GetAccountGroup()
         {
+            if (!string.IsNullOrEmpty(_accountGroup))
+            { 
+                return _accountGroup;
+            }
+
             try
             {
                 string fullPath = $"/api/pro/v1/info";
 
                 string prehashPath = "info";
 
-                IRestResponse response = CreatePrivateQuery(fullPath, prehashPath, null, Method.GET/*, null*/);
+                IRestResponse response = CreatePrivateQuery(fullPath, prehashPath, null, Method.GET);
 
                 if (response == null || response.StatusCode != HttpStatusCode.OK)
                 {
@@ -336,14 +345,25 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 ApiKeyInfoResponse responses = JsonConvert.DeserializeObject<ApiKeyInfoResponse>(response.Content);
 
+                if (responses == null)
+                {
+                    SendLogMessage("GetAccountGroup: Deserialization returned null", LogMessageType.Error);
+                    return string.Empty;
+                }
+
                 if (responses.code == "0" && responses.data != null)
                 {
-                    return responses.data.accountGroup;
+                    _accountGroup = responses.data.accountGroup;
+                    return _accountGroup;
+                }
+                else
+                {
+                    SendLogMessage($"Unable to get account group, message={response.Content}", LogMessageType.Error);
                 }
             }
             catch (Exception exception)
             {
-                SendLogMessage($"Error : {exception.Message}", LogMessageType.Error);
+                SendLogMessage($"Error :" + exception.ToString(), LogMessageType.Error);
             }
 
             return string.Empty;
@@ -386,8 +406,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 _portfolios.Clear();
 
-                string accountGroup = GetAccountGroup();
-                string fullPath = $"/{accountGroup}/api/pro/v1/{_accountCategory}/balance";
+               // string accountGroup = GetAccountGroup();
+                string fullPath = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/balance";
                 string prehashPath = "balance";
 
                 IRestResponse response = CreatePrivateQuery(fullPath, prehashPath, null, Method.GET);
@@ -1525,7 +1545,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private readonly object _socketActivateLocker = new object();
 
-        private List<string> _subscribedSecurities = new List<string>();
+     
 
         private void CheckActivationSockets()
         {
@@ -1639,6 +1659,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private RateGate _rateGateSubscribed = new RateGate(1, TimeSpan.FromMilliseconds(790));
 
+        List<string> _subscribedSecurities = new List<string>();
+
         public void Subscrible(Security security)//////ошибка в слове Subscribe
         {
             try
@@ -1646,6 +1668,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 _rateGateSubscribed.WaitToProceed();
 
                 CreateSubscribeMessageWebSocket(security);
+
                 Thread.Sleep(100);
             }
             catch (Exception exception)
@@ -2332,7 +2355,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             try
             {
-                string accountGroup = GetAccountGroup();
+                //string accountGroup = GetAccountGroup();
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 string orderSide = order.Side == Side.Buy ? "Buy" : "Sell";
                 string typeOrder = order.TypeOrder == OrderPriceType.Limit ? "Limit" : "Market";
@@ -2363,7 +2386,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                                   $"}}";
                 }
 
-                string fullPath = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order";
+                string fullPath = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order";
                 string prehashPath = "order";
 
                 IRestResponse request = CreatePrivateQuery(fullPath, prehashPath, body, Method.POST);
@@ -2417,9 +2440,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 _rateGateCancelOrder.WaitToProceed();
 
-                string accountGroup = GetAccountGroup();
+               // string accountGroup = GetAccountGroup();
 
-                string path = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order/all";
+                string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/all";
                 string prehashPath = "order/all";
 
                 IRestResponse response = CreatePrivateQuery(path, prehashPath, null, Method.DELETE);
@@ -2463,9 +2486,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 _rateGateCancelOrder.WaitToProceed();
 
-                string accountGroup = GetAccountGroup();
+               // string accountGroup = GetAccountGroup();
 
-                string path = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order";
+                string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order";
                 string prehashPath = "order";
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 string body;
@@ -2544,9 +2567,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 _rateGateCancelOrder.WaitToProceed();
 
-                string accountGroup = GetAccountGroup();
+                //string accountGroup = GetAccountGroup();
 
-                string path = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order/all";
+                string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/all";
                 string prehashPath = "order/all";
 
                 string body = $"{{" +
@@ -2596,9 +2619,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 List<Order> orders = new List<Order>();
 
-                string accountGroup = GetAccountGroup();
+               // string accountGroup = GetAccountGroup();
 
-                string path = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order/open";
+                string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/open";
                 string prehashPath = "order/open";
 
                 IRestResponse response = CreatePrivateQuery(path, prehashPath, null, Method.GET);
@@ -2764,9 +2787,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return new Order();
                 }
 
-                string accountGroup = GetAccountGroup();
+               // string accountGroup = GetAccountGroup();
 
-                string path = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order/status?orderId={NumberMarket}";
+                string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/status?orderId={NumberMarket}";
                 string prehashPath = "order/status";
 
                 IRestResponse request = CreatePrivateQuery(path, prehashPath, null, Method.GET);
@@ -2894,9 +2917,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 List<Order> orders = new List<Order>();
 
-                string accountGroup = GetAccountGroup();
+               // string accountGroup = GetAccountGroup();
 
-                string path = $"/{accountGroup}/api/pro/v1/{_accountCategory}/order/hist/current";
+                string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/hist/current";
                 string prehashPath = "order/hist/current";
 
                 IRestResponse response = CreatePrivateQuery(path, prehashPath, null, Method.GET);
@@ -3040,6 +3063,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     client.Proxy = _myProxy;
                 }
+
                 RestRequest request = new RestRequest(fullPath, method);
 
                 request.AddHeader("Content-Type", "application/json");
