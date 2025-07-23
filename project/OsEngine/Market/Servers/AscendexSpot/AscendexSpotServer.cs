@@ -487,7 +487,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             int countNeedToLoad = GetCountCandlesFromPeriod(startTime, endTime, timeFrameBuilder.TimeFrameTimeSpan);
 
-            //return GetCandleHistory(security.NameFull, timeFrameBuilder.TimeFrameTimeSpan, true, countNeedToLoad, endTime);
             List<Candle> candles = GetCandleHistory(security.NameFull, timeFrameBuilder.TimeFrameTimeSpan, true, countNeedToLoad, endTime);
 
             if (candles == null || candles.Count == 0)
@@ -497,58 +496,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             return candles;
         }
-
-        //public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
-        //{
-
-
-        //    int candlesLoaded = 0;
-
-        //    if (periodEnd > DateTime.UtcNow)
-        //    {
-        //        periodEnd = DateTime.UtcNow;
-        //    }
-        //    while (candlesLoaded < countToLoad)
-        //    {
-        //        int candlesToLoad = Math.Min(limit, countToLoad - candlesLoaded);
-
-        //        List<Candle> rangeCandles = CreateQueryCandles(nameSec, timeFrame, periodEnd, candlesToLoad);
-
-        //        if (rangeCandles == null || rangeCandles.Count == 0)
-        //        {
-        //            break;
-        //        }
-
-        //        for (int i = 0; i < rangeCandles.Count; i++)
-        //        {
-        //            if (uniqueTimes.Add(rangeCandles[i].TimeStart))
-        //            {
-        //                allCandles.Add(rangeCandles[i]);
-        //            }
-        //        }
-
-        //        candlesLoaded += rangeCandles.Count;
-
-        //        periodEnd = rangeCandles[0].TimeStart;
-
-        //        if (periodEnd <= timeEnd - TimeSpan.FromMinutes(tf.TotalMinutes * countToLoad))
-        //        {
-        //            break;
-        //        }
-        //    }
-
-        //    for (int i = allCandles.Count - 1; i >= 0; i--)
-        //    {
-        //        if (allCandles[i].TimeStart > timeEnd)
-        //        {
-        //            allCandles.RemoveAt(i);
-        //        }
-        //    }
-
-        //    allCandles.Sort((a, b) => a.TimeStart.CompareTo(b.TimeStart));
-
-        //    return allCandles;
-        //}
 
         public List<Candle> GetCandleHistory(string nameSec, TimeSpan tf, bool isOsData, int countToLoad, DateTime timeEnd)
         {
@@ -699,82 +646,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private RateGate _rateGateCandleHistory = new RateGate(1, TimeSpan.FromMilliseconds(2000));
 
-        //private List<Candle> CreateQueryCandles(string symbol, string interval/*, DateTime startTime*/, DateTime endTime, int limit)
-        //{
-        //    _rateGateCandleHistory.WaitToProceed();
-
-        //    try
-        //    {
-        //        // long startDate = TimeManager.GetTimeStampMilliSecondsToDateTime(startTime);
-        //        long endDate = TimeManager.GetTimeStampMilliSecondsToDateTime(endTime);
-
-        //        string _apiPath = $"/api/pro/v1/barhist?symbol={symbol}&interval={interval}&n={limit}&to={endDate}";
-
-        //        IRestResponse response = CreatePublicQuery(_apiPath, Method.GET/*, _myProxy*/);
-
-        //        if (response.StatusCode == HttpStatusCode.OK)
-        //        {
-        //            AscendexSpotCandleResponse json = JsonConvert.DeserializeObject<AscendexSpotCandleResponse>(response.Content);
-
-        //            if (json == null || json.code != "0" || json.data == null || json.data.Count == 0)
-        //            {
-        //                SendLogMessage($"{json.code}, {json.data}, Data format error or response code != 0", LogMessageType.Error);
-        //                return null;
-        //                // return new List<Candle>();
-        //            }
-
-        //            List<AscendexSpotCandleData> candleList = new List<AscendexSpotCandleData>();
-
-        //            for (int i = 0; i < json.data.Count; i++)
-        //            {
-        //                AscendexSpotCandleData candleData = json.data[i].data;
-
-        //                if (string.IsNullOrEmpty(candleData.o) || string.IsNullOrEmpty(candleData.c)
-        //                || string.IsNullOrEmpty(candleData.h) || string.IsNullOrEmpty(candleData.l)
-        //                || string.IsNullOrEmpty(candleData.v))
-        //                {
-        //                    continue;
-        //                }
-
-        //                if ((candleData.o).ToDecimal() == 0 || (candleData.c).ToDecimal() == 0 ||
-        //                     (candleData.h.ToDecimal() == 0 || (candleData.l).ToDecimal() == 0 ||
-        //                     (candleData.v).ToDecimal() == 0))
-        //                {
-        //                    continue;
-        //                }
-
-        //                //Candle candle = new Candle();
-
-        //                //candle.TimeStart = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(candleData.ts));
-        //                //candle.Open = Convert.ToDecimal(candleData.o);
-        //                //candle.Close = Convert.ToDecimal(candleData.c);
-        //                //candle.High = Convert.ToDecimal(candleData.h);
-        //                //candle.Low = Convert.ToDecimal(candleData.l);
-        //                //candle.Volume = Convert.ToDecimal(candleData.v);
-
-        //                //candleList.Add(candle);
-        //                AscendexSpotCandleData candle = new AscendexSpotCandleData();
-        //            }
-
-        //            if (candleList.Count == 0)
-        //            {
-        //                return null;
-        //            }
-
-        //            return ConvertToCandles(candleList);
-        //        }
-        //        else
-        //        {
-        //            SendLogMessage($"Failed to query candles. Code: {response.StatusCode}, Error: {response.Content}", LogMessageType.Error);
-        //        }
-        //    }
-        //    catch (Exception exception)
-        //    {
-        //        SendLogMessage($"Request error: {exception.Message}", LogMessageType.Error);
-        //    }
-
-        //    return null;
-        //}
         private List<Candle> CreateQueryCandles(string symbol, string interval, DateTime endTime, int limit)
         {
             _rateGateCandleHistory.WaitToProceed();
@@ -791,7 +662,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     AscendexSpotCandleResponse json = JsonConvert.DeserializeObject<AscendexSpotCandleResponse>(response.Content);
 
-                    if (json == null || json.code != "0" || json.data == null || json.data.Count == 0)
+                    if (json == null || json.code != "0" )
                     {
                         return null;
                     }
@@ -827,6 +698,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         newCandle.Volume = candleData.v.ToDecimal();
 
                         candles.Add(newCandle);
+
                         SendLogMessage($"{symbol},{interval}", LogMessageType.System);
                     }
 
