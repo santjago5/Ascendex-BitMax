@@ -75,7 +75,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             try
             {
                 LoadOrderTrackers();
-              
+
                 _myProxy = proxy;
 
                 _publicKey = ((ServerParameterString)ServerParameters[0]).Value;
@@ -111,9 +111,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         CreatePrivateWebSocketConnect();
                         CheckSocketsActivate();
 
-                        SendLogMessage("Start AscendexSpot Connection", LogMessageType.System);
-
                         _accountGroup = GetAccountGroup();
+
+                        SendLogMessage("Start AscendexSpot Connection", LogMessageType.System);
                     }
                     else
                     {
@@ -196,7 +196,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             FIFOListWebSocketPrivateMessage = null;
 
             _portfolios.Clear();
-            PortfolioEvent?.Invoke(new List<Portfolio>());//???????????
+            PortfolioEvent?.Invoke(new List<Portfolio>());
             Disconnect();
         }
 
@@ -412,7 +412,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 _portfolios.Clear();
 
-               // string accountGroup = GetAccountGroup();
                 string fullPath = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/balance";
                 string prehashPath = "balance";
 
@@ -1724,6 +1723,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open && !_isPrivateSubscribed)
                 {
+                   
                     _webSocketPrivate.Send("{\"op\":\"sub\",\"ch\":\"order:cash\"}");
                     _isPrivateSubscribed = true;
                 }
@@ -2371,7 +2371,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 string orderSide = order.Side == Side.Buy ? "Buy" : "Sell";
                 string typeOrder = order.TypeOrder == OrderPriceType.Limit ? "Limit" : "Market";
                 order.PortfolioNumber = _portfolioName;
-         
+
                 string body;
 
                 if (typeOrder == "Limit")
@@ -2397,7 +2397,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                                   $"\"side\": \"{orderSide}\"" +
                                   $"}}";
                 }
-
+                
                 string fullPath = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order";
                 string prehashPath = "order";
 
@@ -2411,22 +2411,21 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 AscendexSpotOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(request.Content);
 
-                if (request.StatusCode == HttpStatusCode.OK && response.code != "0")// if (response == null || response.code != "0" /*/*|| response.data == null*/ || response.data.info == null*/)// 
+                if (request.StatusCode == HttpStatusCode.OK && response.code != "0")
                 {
-                    order.State = OrderStateType.Fail;
                     SendLogMessage($"SendOrder failed: raw response: {request.Content}", LogMessageType.Error);
 
+                    order.State = OrderStateType.Fail;
                     MyOrderEvent?.Invoke(order);
                     return;
                 }
 
-                //if (response != null && response.code == "0" && response.data != null)
                 if (response != null && response.code == "0")
                 {
                     order.NumberMarket = response.data.info.orderId;
-                    order.NumberUser = Convert.ToInt32(response.data.info.id); 
 
-                    if (order.NumberMarket != "0")
+
+                    if (order.NumberUser != 0 && order.NumberMarket != "0")
                     {
                         if (!_orderTrackerDict.ContainsKey(order.NumberUser))
                         {
@@ -2455,8 +2454,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             try
             {
                 _rateGateCancelOrder.WaitToProceed();
-
-               // string accountGroup = GetAccountGroup();
 
                 string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/all";
                 string prehashPath = "order/all";
@@ -2502,10 +2499,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 _rateGateCancelOrder.WaitToProceed();
 
-               // string accountGroup = GetAccountGroup();
-
                 string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order";
                 string prehashPath = "order";
+
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 string body;
 
@@ -2583,8 +2579,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 _rateGateCancelOrder.WaitToProceed();
 
-                //string accountGroup = GetAccountGroup();
-
                 string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/all";
                 string prehashPath = "order/all";
 
@@ -2634,8 +2628,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 _rateGateOrder.WaitToProceed();
 
                 List<Order> orders = new List<Order>();
-
-               // string accountGroup = GetAccountGroup();
 
                 string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/open";
                 string prehashPath = "order/open";
@@ -2731,56 +2723,18 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 if (string.IsNullOrWhiteSpace(order.NumberMarket))
                 {
                     order.NumberMarket = GetMarketOrderId(order.NumberUser);
-
-                    if (string.IsNullOrWhiteSpace(order.NumberMarket))
-                    {
-                        //order.NumberMarket = GetUserOrderNumber();
-                        return;
-                    }
                 }
 
                 Order orderOnMarket = null;
 
-                //List<Order> ordersActive = GetAllOpenOrders();
-                //if (ordersActive != null)
-                //{
-                //    for (int i = 0; i < ordersActive.Count; i++)
-                //    {
-                //        if (ordersActive[i].NumberMarket == order.NumberMarket)
-                //        {
-                //            orderOnMarket = ordersActive[i];
-                //            break;
-                //        }
-                //    }
-                //}
-
-                //if (orderOnMarket == null)
-                //{
-                //    List<Order> ordersHistory = GetHistoryOrders();
-                //    if (ordersHistory != null)
-                //    {
-                //        for (int i = 0; i < ordersHistory.Count; i++)
-                //        {
-                //            if (ordersHistory[i].NumberMarket == order.NumberMarket)
-                //            {
-                //                orderOnMarket = ordersHistory[i];
-                //                break;
-                //            }
-                //        }
-                //    }
-                //}
-
-                //if (orderOnMarket == null)
-                //{
-
                 orderOnMarket = GetOrderStatusById(order.NumberMarket);
                 
-                if (orderOnMarket == null || string.IsNullOrWhiteSpace(orderOnMarket.NumberMarket))//заменить?
+                if (orderOnMarket == null || string.IsNullOrWhiteSpace(orderOnMarket.NumberMarket))
                 {
                     SendLogMessage($"GetOrderStatus > Order not found: {order.NumberMarket}", LogMessageType.Error);
                     return;
                 }
-                // }
+
                 MyOrderEvent?.Invoke(orderOnMarket);
             }
             catch (Exception exception)
@@ -2802,8 +2756,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     SendLogMessage("GetOrderStatus> Order is null", LogMessageType.Error);
                     return new Order();
                 }
-
-               // string accountGroup = GetAccountGroup();
 
                 string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/status?orderId={NumberMarket}";
                 string prehashPath = "order/status";
@@ -2865,6 +2817,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     MyOrderEvent?.Invoke(order);
                 }
+
                 return order;
             }
             catch (Exception exception)
@@ -2876,55 +2829,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private RateGate _rateGateOrder = new RateGate(1, TimeSpan.FromMilliseconds(1000));
 
-        //private void CreateMyTrade(string symbol, int numberUser)
-        //{
-        //    _rateGateOrder.WaitToProceed();
-
-        //    try
-        //    {
-        //        //string fullpath = $"/api/pro/v1/trades";
-
-        //        IRestResponse request = CreatePublicQuery(fullpath, Method.GET);
-
-        //        if (request.StatusCode == HttpStatusCode.OK)
-        //        {
-        //            AscendexSpotOrderResponse response = JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(request.Content);
-
-        //            if (response != null && response.code == "0" && response.data != null)
-        //            {
-        //                int numUser = GetNumberUserByOrderId(response.data.info.orderId);
-
-        //                if (numberUser == numUser)
-        //                {
-        //                    MyTrade myTrade = new MyTrade();
-
-        //                    myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(response.data.info.lastExecTime));
-        //                    myTrade.SecurityNameCode = response.data.info.symbol;
-        //                    myTrade.NumberOrderParent = response.data.info.orderId;
-        //                    myTrade.Price = (response.data.info.price).ToDecimal();
-        //                    myTrade.NumberTrade = response.data.info.seqNum;
-        //                    myTrade.Volume = (response.data.info.cumFilledQty).ToDecimal();
-        //                    myTrade.Side = (response.data.info.side) == "Buy" ? Side.Buy : Side.Sell;
-        //                    string commissionSecName = response.data.info.cumFee;
-
-        //                    myTrade.Volume = myTrade.Volume .ToDecimal();
-
-        //                    MyTradeEvent?.Invoke(myTrade);
-        //                }
-
-        //            }
-        //            else
-        //            {
-        //                SendLogMessage($"CreateMyTrade>. Http State Code: {response.data.info.errorCode}", LogMessageType.Error);
-        //            }
-        //        }
-
-        //    }
-        //    catch (Exception exception)
-        //    {
-        //        SendLogMessage(exception.ToString(), LogMessageType.Error);
-        //    }
-        //}
         public List<Order> GetHistoryOrders()
         {
             try
@@ -2932,8 +2836,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 _rateGateOrder.WaitToProceed();
 
                 List<Order> orders = new List<Order>();
-
-               // string accountGroup = GetAccountGroup();
 
                 string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/hist/current";
                 string prehashPath = "order/hist/current";
@@ -3002,7 +2904,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private OrderStateType GetOrderState(string orderStateResponse)
         {
-            if (orderStateResponse.StartsWith("New") || orderStateResponse.StartsWith("Ack") || orderStateResponse.StartsWith("ACCEPT"))// orderStateResponse.StartsWith("DONE")
+            if (orderStateResponse.StartsWith("New") || orderStateResponse.StartsWith("Ack") || orderStateResponse.StartsWith("ACCEPT"))
             {
                 return OrderStateType.Active;
             }
@@ -3022,11 +2924,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             {
                 return OrderStateType.Cancel;
             }
-            //else if (orderStateResponse.StartsWith("Ack") || orderStateResponse.StartsWith("Done"))
-            //{
-            //    return OrderStateType.Pending;
-            //}
-            SendLogMessage(orderStateResponse, LogMessageType.Error);
+
             return OrderStateType.None;
         }
 

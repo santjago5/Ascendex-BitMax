@@ -79,4 +79,3 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string ei { get; set; }    // execution instruction "NULL_VAL" — инструкция исполнения
     }
 }
-
