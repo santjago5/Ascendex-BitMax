@@ -700,7 +700,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         decimal low = candleData.l.ToDecimal();
                         decimal volume = candleData.v.ToDecimal();
 
-                        // Пропускаем свечи с нулевыми данными
                         if (open == 0 || close == 0 || high == 0 || low == 0 || volume == 0)
                         {
                             continue;
@@ -1089,7 +1088,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
         }
 
-        private void WebSocketPublicNew_OnError(object sender, ErrorEventArgs e)///переделать как в битфайнекс
+        private void WebSocketPublicNew_OnError(object sender, ErrorEventArgs e)
         {
             try
             {
@@ -1536,8 +1535,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     });
                 }
 
-                //  newDepth.Time = DateTime.UtcNow;
-
                 if (newDepth.Time <= _lastTimeMd)
                 {
                     _lastTimeMd = _lastTimeMd.AddTicks(1);
@@ -1548,12 +1545,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     _lastTimeMd = newDepth.Time;
                 }
 
-                // var needDepth = _allDepths.Find(d => d.SecurityNameCode == newDepth.SecurityNameCode);
-
-                //if (needDepth != null)
-                //{
-                //    _allDepths.Remove(needDepth);
-                //}
                 _allDepths.RemoveAll(d => d.SecurityNameCode == newDepth.SecurityNameCode);
 
                 _allDepths.Add(newDepth);
@@ -1625,8 +1616,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 depth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(update.data.ts));
 
-                //  depth.Bids.Sort((a, b) => b.Price.CompareTo(a.Price));
-
                 List<MarketDepthLevel> topBids = new List<MarketDepthLevel>();
 
                 for (int i = 0; i < depth.Bids.Count && i < 25; i++)
@@ -1635,8 +1624,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
 
                 depth.Bids = topBids;
-
-                //  depth.Asks.Sort((a, b) => a.Price.CompareTo(b.Price));
 
                 List<MarketDepthLevel> topAsks = new List<MarketDepthLevel>();
 
