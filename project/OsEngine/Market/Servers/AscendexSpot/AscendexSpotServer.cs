@@ -418,6 +418,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 IRestResponse response = CreatePrivateQuery(fullPath, prehashPath, null, Method.GET);
 
+                if (response == null || response.StatusCode != HttpStatusCode.OK)
+                {
+                    SendLogMessage($"Portfolio request error. Response is null or bad status. Code:{response?.StatusCode}, Error:{response?.Content}", LogMessageType.Error);
+                    return;
+                }
+
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
                     Portfolio portfolio = new Portfolio();
@@ -427,6 +433,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     portfolio.ValueCurrent = 1;
 
                     AscendexSpotBalanceResponseWebsocket wallets = JsonConvert.DeserializeObject<AscendexSpotBalanceResponseWebsocket>(response.Content);
+
+                    if (wallets == null || wallets.data == null)
+                    {
+                        SendLogMessage("CreateQueryPortfolio> Deserialization returned null", LogMessageType.Error);
+                        return;
+                    }
 
                     for (int i = 0; i < wallets.data.Count; i++)
                     {
@@ -487,6 +499,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
 
             int countNeedToLoad = GetCountCandlesFromPeriod(startTime, endTime, timeFrameBuilder.TimeFrameTimeSpan);
+
+            if (countNeedToLoad <= 0)///под вопросом
+            {
+                return null;
+            }
 
             List<Candle> candles = GetCandleHistory(security.NameFull, timeFrameBuilder.TimeFrameTimeSpan, true, countNeedToLoad, endTime);
 
@@ -576,7 +593,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         private bool CheckTime(DateTime startTime, DateTime endTime, DateTime actualTime)
         {
             if (startTime >= endTime ||
-                startTime >= DateTime.UtcNow ||
+                startTime > DateTime.UtcNow ||
                 actualTime > endTime ||
                 actualTime > DateTime.UtcNow)
             {
@@ -616,33 +633,22 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             else
             {
-                SendLogMessage("Error:The timeframe is incorrect", LogMessageType.User);
+                SendLogMessage($"Error: The timeframe is incorrect.Received: {tf}", LogMessageType.User);
                 return null;
             }
         }
 
         private int GetCountCandlesFromPeriod(DateTime startTime, DateTime endTime, TimeSpan tf)
         {
-            TimeSpan timePeriod = endTime - startTime;
-
-            if (tf.Days > 0)
+            if (tf.TotalMinutes <= 0)
             {
-                return Convert.ToInt32(timePeriod.TotalDays / tf.TotalDays);
-            }
-            else if (tf.Hours > 0)
-            {
-                return Convert.ToInt32(timePeriod.TotalHours / tf.TotalHours);
-            }
-            else if (tf.Minutes > 0)
-            {
-                return Convert.ToInt32(timePeriod.TotalMinutes / tf.TotalMinutes);
-            }
-            else
-            {
-                SendLogMessage(" Timeframe must be defined in days, hours, or minutes.", LogMessageType.Error);
+                SendLogMessage($"Invalid timeframe: {tf}", LogMessageType.Error);
+                return 0;
             }
 
-            return 0;
+            double totalMinutes = (endTime - startTime).TotalMinutes;
+
+            return Convert.ToInt32(totalMinutes / tf.TotalMinutes);
         }
 
         private RateGate _rateGateCandleHistory = new RateGate(1, TimeSpan.FromMilliseconds(2000));
@@ -1337,7 +1343,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 SendLogMessage($"Exception in Subscrible: {exception}", LogMessageType.Error);
             }
         }
-
 
         private void CreateSubscribeMessageWebSocket(Security security)
         {
