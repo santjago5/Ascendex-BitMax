@@ -500,7 +500,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
             int countNeedToLoad = GetCountCandlesFromPeriod(startTime, endTime, timeFrameBuilder.TimeFrameTimeSpan);
 
-            if (countNeedToLoad <= 0)///под вопросом
+            if (countNeedToLoad <= 0)
             {
                 return null;
             }
@@ -2134,28 +2134,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string body = $"{{\"orderId\":\"{orderId}\",\"symbol\":\"{secName}\",\"time\":{time}}}";
 
-
-                //if (order.TypeOrder == OrderPriceType.Limit)
-                //{
-                //    body = $"{{" +
-                //           $"\"orderId\": \"{orderId}\", " +
-                //           $"\"orderType\": \"{typeOrder}\", " +
-                //           $"\"symbol\": \"{secName}\", " +
-                //           $"\"time\": {time}, " +
-                //           $"\"orderNumberUser\": \"{numberUser}\"" +
-                //           $"}}";
-                ////}
-                //else
-                //{
-                //   body = $"{{" +
-                //           $"\"orderId\": \"{orderId}\", " +
-                //           $"\"symbol\": \"{secName}\", " +
-                //           $"\"time\": {time}, " +
-                //           $"\"orderNumberUser\": \"{numberUser}\"" +
-                //           $"}}";
-                //}
-
-                //  IRestResponse response = CreatePrivateQuery(path, prehashPath, body, Method.DELETE/*, _myProxy*/);
                 IRestResponse response = CreatePrivateQuery(path, prehashPath, body, Method.DELETE);
 
                 if (response == null)
@@ -2208,10 +2186,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/all";
                 string prehashPath = "order/all";
-
-                string body = $"{{" +
-                              $"\"symbol\": \"{security.Name}\"" +
-                              $"}}";
+                string body = $"{{\"symbol\":\"{security.Name}\"}}";
 
                 IRestResponse response = CreatePrivateQuery(path, prehashPath, body, Method.DELETE);
 
