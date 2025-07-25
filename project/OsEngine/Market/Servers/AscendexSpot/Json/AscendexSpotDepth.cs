@@ -6,14 +6,8 @@ using System.Threading.Tasks;
 
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
+
     class AscendexSpotDepthResponse
-    {
-        public string code { get; set; }
-
-        public AscendexSpotDepthMessage data { get; set; }
-    }
-
-    class AscendexSpotDepthMessage
     {
         public string m { get; set; } // "depth-snapshot"
 

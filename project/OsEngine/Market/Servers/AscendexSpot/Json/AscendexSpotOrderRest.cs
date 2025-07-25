@@ -10,12 +10,12 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
 
     public class AscendexSpotOrderResponse
     {
-        public string code { get; set; }                        // Response code
+        public string code { get; set; }                              // Response code
 
-        public AscendexSpotOrderDataRest data { get; set; }     // Response data
+        public AscendexSpotQueryOrderResponse data { get; set; }     // Response data
     }
 
-    public class AscendexSpotOrderDataRest
+    public class AscendexSpotQueryOrderResponse
     {
         public string accountId { get; set; }                  // Account ID
 
@@ -96,19 +96,6 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public AscendexSpotCancelOrderData data { get; set; }
     }
 
-    public class AscendexSpotCancelOrderInfo
-    {
-        public string id { get; set; }
-
-        public string orderId { get; set; }
-
-        public string orderType { get; set; }
-
-        public string symbol { get; set; }
-
-        public string timestamp { get; set; }
-    }
-
     public class AscendexSpotCancelOrderData
     {
         public string accountId { get; set; }
@@ -120,5 +107,18 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string status { get; set; }
 
         public AscendexSpotCancelOrderInfo info { get; set; }
+    }
+
+    public class AscendexSpotCancelOrderInfo
+    {
+        public string id { get; set; }
+
+        public string orderId { get; set; }
+
+        public string orderType { get; set; }
+
+        public string symbol { get; set; }
+
+        public string timestamp { get; set; }
     }
 }

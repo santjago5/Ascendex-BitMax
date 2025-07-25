@@ -16,7 +16,6 @@ using OsEngine.Market.Servers.AscendexSpot.Json;
 using OsEngine.Market.Servers.BitMax;
 using OsEngine.Market.Servers.Entity;
 using RestSharp;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 using Candle = OsEngine.Entity.Candle;
 using CloseEventArgs = OsEngine.Entity.WebSocketOsEngine.CloseEventArgs;
 using ErrorEventArgs = OsEngine.Entity.WebSocketOsEngine.ErrorEventArgs;
@@ -129,7 +128,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Connection cannot be open Ascendex. exception:" + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in Connect: {exception}", LogMessageType.Error); 
                 ServerStatus = ServerConnectStatus.Disconnect;
                 DisconnectEvent();
             }
@@ -176,7 +175,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in CheckSocketsActivate: {exception}", LogMessageType.Error);
             }
         }
 
@@ -189,7 +188,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Dispose method error: " + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in Dispose: {exception}", LogMessageType.Error);
             }
 
             FIFOListWebSocketPublicMessage = null;
@@ -207,7 +206,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 ServerStatus = ServerConnectStatus.Disconnect;
                 DisconnectEvent();
             }
-        }
+        } 
 
         public DateTime ServerTime { get; set; }
 
@@ -271,13 +270,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         return;
                     }
 
-                    if (securityList.data.Count > 0)
+                    if (securityList.code == "0")
                     {
-                        SendLogMessage("Securities loaded. Count: " + securityList.data.Count, LogMessageType.System);
-                    }
+                        if (securityList.data.Count > 0)
+                        {
+                            SendLogMessage("Securities loaded. Count: " + securityList.data.Count, LogMessageType.System);
+                        }
 
-                    if (securityList != null && securityList.code == "0")
-                    {
                         List<Security> securities = new List<Security>();
 
                         for (int i = 0; i < securityList.data.Count; i++)
@@ -287,7 +286,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             string domain = securityList.data[i].domain;
                             string statusCode = securityList.data[i].statusCode;
 
-                            if (symbol.Contains("$") || domain.Contains("LeveragedETF") || statusCode != "Normal")
+                            if (symbol.Contains("$") ||
+                                domain.Contains("LeveragedETF") ||
+                                statusCode != "Normal")
                             {
                                 continue;
                             }
@@ -302,11 +303,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             newSecurity.SecurityType = SecurityType.CurrencyPair;
                             newSecurity.Lot = securityList.data[i].lotSize.ToDecimal();
                             newSecurity.State = SecurityStateType.Activ;
-                            newSecurity.PriceStep = securityList.data[i].tickSize.ToString().ToDecimal();
+                            newSecurity.PriceStep = securityList.data[i].tickSize.ToDecimal();
                             newSecurity.Decimals = price.DecimalsCount() == 0 ? 1 : price.DecimalsCount();
                             newSecurity.PriceStepCost = newSecurity.PriceStep;
                             newSecurity.DecimalsVolume = Convert.ToInt32(securityList.data[i].qtyScale);
-                            newSecurity.MinTradeAmount = securityList.data[i].minQty.ToString().ToDecimal();
+                            newSecurity.MinTradeAmount = securityList.data[i].minQty.ToDecimal();
                             newSecurity.MinTradeAmountType = MinTradeAmountType.Contract;
                             newSecurity.VolumeStep = newSecurity.DecimalsVolume.GetValueByDecimals();
 
@@ -323,14 +324,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Securities request exception" + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in GetSecurities: {exception}", LogMessageType.Error);
             }
         }
 
         private string GetAccountGroup()
         {
             if (!string.IsNullOrEmpty(_accountGroup))
-            { 
+            {
                 return _accountGroup;
             }
 
@@ -344,22 +345,22 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (response == null || response.StatusCode != HttpStatusCode.OK)
                 {
-                    SendLogMessage($"Failed to get account group> {response.Content}", LogMessageType.Error);
+                    SendLogMessage($"Failed to get account group. Status: {response?.StatusCode}, Content: {response?.Content}", LogMessageType.Error);
 
                     return string.Empty;
                 }
 
-                ApiKeyInfoResponse responses = JsonConvert.DeserializeObject<ApiKeyInfoResponse>(response.Content);
+                AscendexSpotApiKeyInfoResponse result = JsonConvert.DeserializeObject<AscendexSpotApiKeyInfoResponse>(response.Content);
 
-                if (responses == null)
+                if (result == null)
                 {
                     SendLogMessage("GetAccountGroup: Deserialization returned null", LogMessageType.Error);
                     return string.Empty;
                 }
 
-                if (responses.code == "0" && responses.data != null)
+                if (result.code == "0" && result.data != null)
                 {
-                    _accountGroup = responses.data.accountGroup;
+                    _accountGroup = result.data.accountGroup;
                     return _accountGroup;
                 }
                 else
@@ -369,7 +370,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage($"Error :" + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in GetAccountGroup: {exception}", LogMessageType.Error);
             }
 
             return string.Empty;
@@ -425,7 +426,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     portfolio.ValueBegin = 1;
                     portfolio.ValueCurrent = 1;
 
-                    AscendexSpotBalanceResponse wallets = JsonConvert.DeserializeObject<AscendexSpotBalanceResponse>(response.Content);
+                    AscendexSpotBalanceResponseWebsocket wallets = JsonConvert.DeserializeObject<AscendexSpotBalanceResponseWebsocket>(response.Content);
 
                     for (int i = 0; i < wallets.data.Count; i++)
                     {
@@ -449,7 +450,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in CreateQueryPortfolio: {exception}", LogMessageType.Error);
             }
         }
 
@@ -662,7 +663,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     AscendexSpotCandleResponse json = JsonConvert.DeserializeObject<AscendexSpotCandleResponse>(response.Content);
 
-                    if (json == null || json.code != "0" )
+                    if (json == null || json.code != "0")
                     {
                         return null;
                     }
@@ -716,7 +717,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage($"Request error: {exception.Message}", LogMessageType.Error);
+                SendLogMessage($"Exception in CreateQueryCandles: {exception}", LogMessageType.Error);
             }
 
             return null;
@@ -772,7 +773,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 catch (Exception exception)
                 {
                     Thread.Sleep(5000);
-                    SendLogMessage(exception.Message, LogMessageType.Error);
+                    SendLogMessage($"Exception in PublicMessageReader: {exception}", LogMessageType.Error);
                 }
             }
         }
@@ -826,7 +827,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     }
                     else if (message.Contains("\"m\":\"order\""))
                     {
-                        var orderMessage = JsonConvert.DeserializeObject<WebSocketMessage<AscendexSpotOrderData>>(message);
+                        WebSocketMessage<AscendexSpotOrderDataWebsocket> orderMessage =
+                        JsonConvert.DeserializeObject<WebSocketMessage<AscendexSpotOrderDataWebsocket>>(message);
 
                         UpdateOrder(orderMessage);
                     }
@@ -834,7 +836,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 catch (Exception exception)
                 {
                     Thread.Sleep(5000);
-                    SendLogMessage(exception.Message, LogMessageType.Error);
+                    SendLogMessage($"Exception in PrivateMessageReader: {exception}", LogMessageType.Error);
                 }
             }
         }
@@ -862,14 +864,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage($"{exception.Message}", LogMessageType.Error);
+                SendLogMessage($"Exception in CreatePublicWebSocketConnect: {exception}", LogMessageType.Error);
             }
         }
 
         private WebSocket CreateNewPublicSocket()
         {
             try
-            {   
+            {
                 WebSocket webSocketPublicNew = new WebSocket(_webSocketUrl);
 
                 if (_myProxy != null)
@@ -888,7 +890,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in CreateNewPublicSocket: {exception}", LogMessageType.Error);
                 return null;
             }
         }
@@ -919,7 +921,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in CreatePrivateWebSocketConnect: {exception}", LogMessageType.Error);
             }
         }
 
@@ -995,7 +997,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in WebSocketPublicNew_OnOpen: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1009,7 +1011,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in WebSocketPublicNew_OnClose: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1057,9 +1059,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     FIFOListWebSocketPublicMessage.Enqueue(e.Data);
                 }
             }
-            catch (Exception error)
+            catch (Exception exception)
             {
-                SendLogMessage(error.ToString(), LogMessageType.Error);
+
+                SendLogMessage($"Exception in WebSocketPublicNew_OnMessage: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1088,7 +1091,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Data socket error" + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in WebSocketPublicNew_OnError: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1107,7 +1110,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in _webSocketPrivate_OnOpen: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1121,7 +1124,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in _webSocketPrivate_OnClose: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1152,7 +1155,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     if (e.Data.Contains("\"code\":0"))
                     {
-                        SendLogMessage("Authorization to private channels", LogMessageType.System);// system
+                        SendLogMessage("Authorization to private channels", LogMessageType.System);
                     }
                     else
                     {
@@ -1164,9 +1167,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 FIFOListWebSocketPrivateMessage.Enqueue(e.Data);
             }
-            catch (Exception error)
+            catch (Exception exception)
             {
-                SendLogMessage(error.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in _webSocketPrivate_OnMessage: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1195,7 +1198,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Data socket error" + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in _webSocketPrivate_OnError: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1254,7 +1257,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 }
                 catch (Exception exception)
                 {
-                    SendLogMessage("CheckActivation exception : " + exception.ToString(), LogMessageType.Error);
+                    SendLogMessage($"Exception in  CheckActivationSockets: {exception}", LogMessageType.Error);
                 }
             }
         }
@@ -1302,9 +1305,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         Disconnect();
                     }
                 }
-                catch (Exception error)
+                catch (Exception exception)
                 {
-                    SendLogMessage(error.ToString(), LogMessageType.Error);
+                    SendLogMessage($"Exception in  CheckAliveWebSocket: {exception}", LogMessageType.Error);
                 }
             }
         }
@@ -1331,7 +1334,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in Subscrible: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1373,14 +1376,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (_webSocketPrivate != null && _webSocketPrivate.ReadyState == WebSocketState.Open && !_isPrivateSubscribed)
                 {
-                   
+
                     _webSocketPrivate.Send("{\"op\":\"sub\",\"ch\":\"order:cash\"}");
                     _isPrivateSubscribed = true;
                 }
             }
             catch (Exception exception)
             {
-                SendLogMessage("CreateSubscribeMessageWebSocket() error: " + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in CreateSubscribeMessageWebSocket: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1416,7 +1419,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         }
                         catch (Exception exception)
                         {
-                            SendLogMessage($"Unsubscribe error on public depth socket: {exception.Message}", LogMessageType.Error);
+                            SendLogMessage($"PublicSocket> Exception in UnsubscribeFromAllWebSockets: {exception}", LogMessageType.Error);
                         }
                     }
                 }
@@ -1439,7 +1442,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage($"General unsubscribe error: {exception.Message}", LogMessageType.Error);
+                SendLogMessage($"PrivateSocket> Exception in UnsubscribeFromAllWebSockets: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1473,10 +1476,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                AscendexSpotDepthMessage snapshot = JsonConvert.DeserializeObject<AscendexSpotDepthMessage>(message);
+                AscendexSpotDepthResponse snapshot = JsonConvert.DeserializeObject<AscendexSpotDepthResponse>(message);
 
                 if (snapshot == null || snapshot.data == null)
-                { 
+                {
                     return;
                 }
 
@@ -1488,7 +1491,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 newDepth.SecurityNameCode = snapshot.symbol;
                 newDepth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(snapshot.data.ts));
 
-                for (int i = 0; i < snapshot.data.bids.Count && i < 25; i++)
+                for (int i = 0; i < snapshot.data.bids.Count && i <= 25; i++)
                 {
                     var level = snapshot.data.bids[i];
 
@@ -1499,7 +1502,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     });
                 }
 
-                for (int i = 0; i < snapshot.data.asks.Count && i < 25; i++)
+                for (int i = 0; i < snapshot.data.asks.Count && i <= 25; i++)
                 {
                     var level = snapshot.data.asks[i];
 
@@ -1538,9 +1541,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 MarketDepthEvent?.Invoke(newDepth.GetCopy());
             }
-            catch (Exception error)
+            catch (Exception exception)
             {
-                SendLogMessage(error.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in SnapshotDepth: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1548,12 +1551,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                var update = JsonConvert.DeserializeObject<AscendexSpotDepthMessage>(json);
+                var update = JsonConvert.DeserializeObject<AscendexSpotDepthResponse>(json);
 
                 var depth = _allDepths.Find(d => d.SecurityNameCode == update.symbol);
 
                 if (depth == null)
-                { 
+                {
                     return;
                 }
 
@@ -1562,7 +1565,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
-                if (!_snapshotInitialized) 
+                if (!_snapshotInitialized)
                 {
                     return;
                 }
@@ -1603,7 +1606,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 List<MarketDepthLevel> topBids = new List<MarketDepthLevel>();
 
-                for (int i = 0; i < depth.Bids.Count && i < 25; i++)
+                for (int i = 0; i < depth.Bids.Count && i <= 25; i++)
                 {
                     topBids.Add(depth.Bids[i]);
                 }
@@ -1614,7 +1617,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 List<MarketDepthLevel> topAsks = new List<MarketDepthLevel>();
 
-                for (int i = 0; i < depth.Asks.Count && i < 25; i++)
+                for (int i = 0; i < depth.Asks.Count && i <= 25; i++)
                 {
                     topAsks.Add(depth.Asks[i]);
                 }
@@ -1630,7 +1633,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Depth of Market update error: " + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in UpdateDepth: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1664,13 +1667,13 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 {
                     if (existing != null)
                     {
-                        if (isBid) 
+                        if (isBid)
                         {
-                            existing.Bid = size; 
+                            existing.Bid = size;
                         }
                         else
                         {
-                            existing.Ask = size; 
+                            existing.Ask = size;
                         }
                     }
                     else
@@ -1678,10 +1681,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         var level = new MarketDepthLevel { Price = price };
 
                         if (isBid)
-                        { 
+                        {
                             level.Bid = size;
                         }
-                        else 
+                        else
                         {
                             level.Ask = size;
                         }
@@ -1692,11 +1695,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
 
             if (isBid)
-            { 
+            {
                 levels.Sort((a, b) => b.Price.CompareTo(a.Price));
             }
             else
-            { 
+            {
                 levels.Sort((a, b) => a.Price.CompareTo(b.Price));
             }
         }
@@ -1721,8 +1724,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     newTrade.SecurityNameCode = response.symbol;
                     newTrade.Id = json.seqnum;
-                    newTrade.Price = json.p.ToString().ToDecimal();
-                    newTrade.Volume = json.q.ToString().ToDecimal();
+                    newTrade.Price = json.p.ToDecimal();
+                    newTrade.Volume = json.q.ToDecimal();
                     newTrade.Side = (json.bm == "true") ? Side.Sell : Side.Buy;
                     newTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(json.ts));
 
@@ -1731,11 +1734,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in UpdateTrade: {exception}", LogMessageType.Error);
             }
         }
 
-        private void UpdateOrder(WebSocketMessage<AscendexSpotOrderData> json)
+        private void UpdateOrder(WebSocketMessage<AscendexSpotOrderDataWebsocket> json)
         {
             try
             {
@@ -1765,8 +1768,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 updateOrder.ServerType = ServerType.AscendexSpot;
                 updateOrder.PortfolioNumber = _portfolioName;
 
-                SendLogMessage($" Order send: status {updateOrder.State}, OrderId :{updateOrder.NumberMarket}, User:{updateOrder.NumberUser}  ", LogMessageType.System);
-
                 if (json.data.status == "PartiallyFilled" || json.data.status == "Filled")
                 {
                     UpdateMyTrade(data);
@@ -1777,15 +1778,17 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     UpdatePortfolioFromOrder(data);
                 }
 
+                SendLogMessage($" Order send: status {updateOrder.State}, OrderId :{updateOrder.NumberMarket}, User:{updateOrder.NumberUser}  ", LogMessageType.System);
+
                 MyOrderEvent?.Invoke(updateOrder);
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in UpdateOrder: {exception}", LogMessageType.Error);
             }
         }
 
-        private void UpdateMyTrade(AscendexSpotOrderData data)
+        private void UpdateMyTrade(AscendexSpotOrderDataWebsocket data)
         {
             try
             {
@@ -1809,11 +1812,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("UpdateMyTrade> Error: " + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in UpdateMyTrade: {exception}", LogMessageType.Error);
             }
         }
 
-        private void UpdatePortfolioFromOrder(AscendexSpotOrderData data)
+        private void UpdatePortfolioFromOrder(AscendexSpotOrderDataWebsocket data)
         {
             try
             {
@@ -1834,7 +1837,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     _portfolios.Add(portfolio);
                 }
-                    string[] parts = data.symbol.Split('/');
+                string[] parts = data.symbol.Split('/');
                 if (parts.Length == 2)
                 {
                     string baseAsset = parts[0];
@@ -1863,11 +1866,15 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("UpdatePortfolio> Error: " + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in UpdatePortfolioFromOrder: {exception}", LogMessageType.Error);
             }
         }
 
         #endregion
+
+        #region 11 Trade
+
+        private RateGate _rateGateOrder = new RateGate(1, TimeSpan.FromMilliseconds(1000));
 
         private Dictionary<int, string> _orderTrackerDict = new Dictionary<int, string>();
 
@@ -1912,6 +1919,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     string json = File.ReadAllText("marketToUserDict.json");
                     _marketToUserDict = JsonConvert.DeserializeObject<Dictionary<string, int>>(json);
                 }
+
                 if (File.Exists("orderTrackerDict.json"))
                 {
                     string json1 = File.ReadAllText("orderTrackerDict.json");
@@ -1920,7 +1928,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Error loading dictionary: " + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in LoadOrderTrackers: {exception}", LogMessageType.Error);
             }
         }
 
@@ -1941,11 +1949,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Error while saving : " + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in SaveOrderTrackers: {exception}", LogMessageType.Error);
             }
         }
-
-        #region 11 Trade
 
         public void SendOrder(Order order)
         {
@@ -1954,20 +1960,22 @@ namespace OsEngine.Market.Servers.AscendexSpot
             try
             {
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                string secName = order.SecurityNameCode;
                 string orderSide = order.Side == Side.Buy ? "Buy" : "Sell";
                 string typeOrder = order.TypeOrder == OrderPriceType.Limit ? "Limit" : "Market";
-                order.PortfolioNumber = _portfolioName;
-
+                string numberUser = order.NumberUser.ToString();
+                string price = order.Price.ToString(CultureInfo.InvariantCulture);
+                string volume = order.Volume.ToString(CultureInfo.InvariantCulture);
                 string body;
 
                 if (typeOrder == "Limit")
                 {
                     body = $"{{" +
-                                  $"\"id\": \"{order.NumberUser.ToString()}\", " +
+                                  $"\"id\": \"{numberUser}\", " +
                                   $"\"time\": {time}, " +
-                                  $"\"symbol\": \"{order.SecurityNameCode}\", " +
-                                  $"\"orderPrice\": \"{order.Price.ToString(CultureInfo.InvariantCulture)}\", " +
-                                  $"\"orderQty\": \"{order.Volume.ToString(CultureInfo.InvariantCulture)}\", " +
+                                  $"\"symbol\": \"{secName}\", " +
+                                  $"\"orderPrice\": \"{price}\", " +
+                                  $"\"orderQty\": \"{volume}\", " +
                                   $"\"orderType\": \"{typeOrder}\", " +
                                   $"\"side\": \"{orderSide}\"" +
                                   $"}}";
@@ -1975,15 +1983,15 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 else
                 {
                     body = $"{{" +
-                                  $"\"id\": \"{order.NumberUser.ToString()}\", " +
+                                  $"\"id\": \"{numberUser}\", " +
                                   $"\"time\": {time}, " +
-                                  $"\"symbol\": \"{order.SecurityNameCode}\", " +
-                                  $"\"orderQty\": \"{order.Volume.ToString(CultureInfo.InvariantCulture)}\", " +
+                                  $"\"symbol\": \"{secName}\", " +
+                                  $"\"orderQty\": \"{volume}\", " +
                                   $"\"orderType\": \"{typeOrder}\", " +
                                   $"\"side\": \"{orderSide}\"" +
                                   $"}}";
                 }
-                
+
                 string fullPath = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order";
                 string prehashPath = "order";
 
@@ -2015,31 +2023,31 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     {
                         if (!_orderTrackerDict.ContainsKey(order.NumberUser))
                         {
-                            _orderTrackerDict.Add(order.NumberUser, response.data.info.orderId);
+                            _orderTrackerDict.Add(order.NumberUser, order.NumberMarket);
                         }
 
-                        if (!_marketToUserDict.ContainsKey(response.data.info.orderId))
+                        if (!_marketToUserDict.ContainsKey(order.NumberMarket))
                         {
-                            _marketToUserDict.Add(response.data.info.orderId, order.NumberUser);
+                            _marketToUserDict.Add(order.NumberMarket, order.NumberUser);
                         }
                     }
 
                     SaveOrderTrackers();
+
+                    MyOrderEvent?.Invoke(order);
                 }
             }
             catch (Exception exception)
             {
-                SendLogMessage("Order send exception " + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in SendOrder: {exception}", LogMessageType.Error);
             }
         }
-
-        private RateGate _rateGateCancelOrder = new RateGate(1, TimeSpan.FromMilliseconds(1000));
 
         public void CancelAllOrders()
         {
             try
             {
-                _rateGateCancelOrder.WaitToProceed();
+                _rateGateOrder.WaitToProceed();
 
                 string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/all";
                 string prehashPath = "order/all";
@@ -2075,7 +2083,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("Order canceled exception " + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in CancelAllOrders: {exception}", LogMessageType.Error);
             }
         }
 
@@ -2083,31 +2091,35 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                _rateGateCancelOrder.WaitToProceed();
+                _rateGateOrder.WaitToProceed();
 
                 string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order";
                 string prehashPath = "order";
 
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                string secName = order.SecurityNameCode;
+                string typeOrder = order.TypeOrder == OrderPriceType.Limit ? "Limit" : "Market";
+                string numberUser = order.NumberUser.ToString();
+                string orderId = order.NumberMarket.ToString();
                 string body;
 
                 if (order.TypeOrder == OrderPriceType.Limit)
                 {
                     body = $"{{" +
-                           $"\"orderId\": \"{order.NumberMarket.ToString()}\", " +
-                           $"\"orderType\": \"{order.TypeOrder.ToString()}\", " +
-                           $"\"symbol\": \"{order.SecurityNameCode}\", " +
+                           $"\"orderId\": \"{orderId}\", " +
+                           $"\"orderType\": \"{typeOrder}\", " +
+                           $"\"symbol\": \"{secName}\", " +
                            $"\"time\": {time}, " +
-                           $"\"orderNumberUser\": \"{order.NumberUser.ToString()}\"" +
+                           $"\"orderNumberUser\": \"{numberUser}\"" +
                            $"}}";
                 }
                 else
                 {
                     body = $"{{" +
-                           $"\"orderId\": \"{order.NumberMarket.ToString()}\", " +
-                           $"\"symbol\": \"{order.SecurityNameCode}\", " +
+                           $"\"orderId\": \"{orderId}\", " +
+                           $"\"symbol\": \"{secName}\", " +
                            $"\"time\": {time}, " +
-                           $"\"orderNumberUser\": \"{order.NumberUser.ToString()}\"" +
+                           $"\"orderNumberUser\": \"{numberUser}\"" +
                            $"}}";
                 }
 
@@ -2124,20 +2136,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     if (cancelResult != null && cancelResult.code == "0")
                     {
-                        //if (cancelResult.data.status == "Ack")//cancel-Order
-                        //{
                         Order cancelOrd = new Order();
 
                         cancelOrd.NumberMarket = cancelResult.data.info.orderId;
                         cancelOrd.NumberUser = GetUserOrderNumber(cancelResult.data.info.orderId);
                         cancelOrd.TimeCancel = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(cancelResult.data.info.timestamp));
-                        cancelOrd.State = OrderStateType.Cancel;//GetOrderState(cancelResult.data.status);
+                        cancelOrd.State = OrderStateType.Cancel;
 
                         SendLogMessage("The order has been cancelled . OrderId: " + cancelOrd.NumberMarket + "NumberUser:" + cancelOrd.NumberUser, LogMessageType.Trade);
-
-                        GetOrderStatus(order);
-
-                        // }
                     }
                     else
                     {
@@ -2151,11 +2157,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     SendLogMessage($" Error Order cancellation:  {response.Content},{response.ErrorMessage}", LogMessageType.Error);
                 }
 
-                //GetPortfolios();
+                GetPortfolios();
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in CancelOrder: {exception}", LogMessageType.Error);
             }
         }
 
@@ -2163,7 +2169,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
         {
             try
             {
-                _rateGateCancelOrder.WaitToProceed();
+                _rateGateOrder.WaitToProceed();
 
                 string path = $"/{_accountGroup}/api/pro/v1/{_accountCategory}/order/all";
                 string prehashPath = "order/all";
@@ -2172,7 +2178,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                               $"\"symbol\": \"{security.Name}\"" +
                               $"}}";
 
-                IRestResponse response = CreatePrivateQuery(path, prehashPath, body, Method.DELETE/*, _myProxy*/);
+                IRestResponse response = CreatePrivateQuery(path, prehashPath, body, Method.DELETE);
 
                 if (response == null)
                 {
@@ -2189,7 +2195,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     }
                     else
                     {
-                        SendLogMessage($" Cancel error: {response.Content}", LogMessageType.Error);
+                        SendLogMessage($" CancelOrder error: {response.Content}", LogMessageType.Error);
                     }
                 }
                 else
@@ -2199,7 +2205,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in  CancelAllOrdersToSecurity: {exception}", LogMessageType.Error);
             }
         }
 
@@ -2276,7 +2282,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in GetAllOpenOrders: {exception}", LogMessageType.Error);
                 return new List<Order>();
             }
         }
@@ -2314,7 +2320,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 Order orderOnMarket = null;
 
                 orderOnMarket = GetOrderStatusById(order.NumberMarket);
-                
+
                 if (orderOnMarket == null || string.IsNullOrWhiteSpace(orderOnMarket.NumberMarket))
                 {
                     SendLogMessage($"GetOrderStatus > Order not found: {order.NumberMarket}", LogMessageType.Error);
@@ -2325,7 +2331,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage("GetOrderStatus > Exception: " + exception.ToString(), LogMessageType.Error);
+                SendLogMessage($"Exception in GetOrderStatus: {exception}", LogMessageType.Error);
             }
         }
 
@@ -2356,8 +2362,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (request.StatusCode == HttpStatusCode.OK)
                 {
-                    AscendexSpotQueryOrderResponse response =
-     JsonConvert.DeserializeObject<AscendexSpotQueryOrderResponse>(request.Content);
+                    AscendexSpotOrderResponse response =
+                    JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(request.Content);
 
                     if (response == null)
                     {
@@ -2367,7 +2373,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     if (response != null && response.data != null && response.code == "0")
                     {
-                        AscendexSpotQueryOrderMessage orderData = response.data;
+                        AscendexSpotOrderInfo orderData = response.data.info;
 
                         order.SecurityNameCode = orderData.symbol;
                         order.NumberMarket = orderData.orderId;
@@ -2408,12 +2414,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in GetOrderStatusById: {exception}", LogMessageType.Error);
                 return new Order();
             }
         }
-
-        private RateGate _rateGateOrder = new RateGate(1, TimeSpan.FromMilliseconds(1000));
 
         private OrderStateType GetOrderState(string orderStateResponse)
         {
@@ -2469,7 +2473,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in CreatePublicQuery: {exception}", LogMessageType.Error);
                 return null;
             }
         }
@@ -2507,7 +2511,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in CreatePrivateQuery: {exception}", LogMessageType.Error);
                 return null;
             }
         }
@@ -2537,7 +2541,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
             }
             catch (Exception exception)
             {
-                SendLogMessage(exception.Message, LogMessageType.Error);
+                SendLogMessage($"Exception in  GenerateAuthenticate: {exception}", LogMessageType.Error);
             }
         }
 

@@ -39,9 +39,3 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string v { get; set; }        // Volume
     }
 }
-
-
-
-
-
-

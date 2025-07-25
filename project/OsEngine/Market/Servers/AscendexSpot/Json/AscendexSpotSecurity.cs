@@ -6,8 +6,14 @@ using System.Threading.Tasks;
 
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
+    public class AscendexSpotSecurityResponse
+    {
+        public string code { get; set; }
 
-    public class AscendexSpotSecurity
+        public List<AscendexSpotSecurityData> data { get; set; }
+    }
+
+    public class AscendexSpotSecurityData
     {
         public string symbol { get; set; }
 
@@ -49,12 +55,4 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
 
         public string notionalScale { get; set; }
     }
-
-    public class AscendexSpotSecurityResponse
-    {
-        public string code { get; set; }
-
-        public List<AscendexSpotSecurity> data { get; set; }
-    }
 }
-

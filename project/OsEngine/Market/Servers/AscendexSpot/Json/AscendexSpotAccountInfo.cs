@@ -6,14 +6,14 @@ using System.Threading.Tasks;
 
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
-    public class ApiKeyInfoResponse
+    public class AscendexSpotApiKeyInfoResponse
     {
         public string code { get; set; }
 
-        public ApiKeyInfo data { get; set; }
+        public AscendexSpotApiKeyInfo data { get; set; }
     }
 
-    public class ApiKeyInfo
+    public class AscendexSpotApiKeyInfo
     {
         public string accountGroup { get; set; }
 

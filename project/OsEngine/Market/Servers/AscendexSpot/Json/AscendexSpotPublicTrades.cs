@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
 
-
     class AscendexSpotPublicTradesResponse
     {
         public string m { get; set; }           // "trades"
