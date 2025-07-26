@@ -241,7 +241,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         private string _portfolioName = "AscendexSpotPortfolio";
 
-
         #endregion
 
         #region 3 Securities
@@ -389,11 +388,11 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
         #region 4 Portfolios
 
+        private RateGate _rateGatePortfolio = new RateGate(1, TimeSpan.FromMilliseconds(2000));
+
         private List<Portfolio> _portfolios = new List<Portfolio>();
 
         public event Action<List<Portfolio>> PortfolioEvent;
-
-        private RateGate _rateGatePortfolio = new RateGate(1, TimeSpan.FromMilliseconds(2000));
 
         public void GetPortfolios()
         {
@@ -420,7 +419,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (response == null || response.StatusCode != HttpStatusCode.OK)
                 {
-                    SendLogMessage($"Portfolio request error. Response is null or bad status. Code:{response?.StatusCode}, Error:{response?.Content}", LogMessageType.Error);
+                    SendLogMessage($"Portfolio request error. Response is null or bad status. Error:{response.Content}", LogMessageType.Error);
                     return;
                 }
 
@@ -567,10 +566,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     allCandles.RemoveAt(i);
                 }
             }
+
             if (allCandles.Count == 0)
             {
                 return null;
             }
+
             allCandles.Sort((a, b) => a.TimeStart.CompareTo(b.TimeStart));
 
             return allCandles;
@@ -964,7 +965,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                         }
 
                         webSocketPublicNew.Dispose();
-                        _webSocketPublic[i] = null;
                     }
                 }
                 catch
