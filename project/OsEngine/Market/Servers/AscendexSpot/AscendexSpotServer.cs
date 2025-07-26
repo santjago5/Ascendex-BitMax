@@ -2366,8 +2366,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     SendLogMessage($"GetOrderStatusById > HTTP error: {request.StatusCode}, content: {request.Content}", LogMessageType.Error);
                     return null;
                 }
-                AscendexSpotOrderResponse response =
-                 JsonConvert.DeserializeObject<AscendexSpotOrderResponse>(request.Content);
+
+                AscendexSpotOpenOrdersResponse response =
+                 JsonConvert.DeserializeObject<AscendexSpotOpenOrdersResponse>(request.Content);
 
                 if (response == null)
                 {
@@ -2377,7 +2378,9 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (response.code == "0")
                 {
-                    AscendexSpotOrderInfo orderData = response.data.info;
+                    SendLogMessage("Raw JSON response: " + request.Content, LogMessageType.Error);
+
+                    AscendexSpotOrderInfo orderData = response.;
 
                     order.SecurityNameCode = orderData.symbol;
                     order.NumberMarket = orderData.orderId;

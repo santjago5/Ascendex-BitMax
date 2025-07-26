@@ -26,7 +26,6 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string status { get; set; }                     // Request status (e.g. ACCEPT)
 
         public AscendexSpotOrderInfo info { get; set; }        //Detailed order info
-
     }
 
     public class AscendexSpotOrderInfo
