@@ -1598,15 +1598,14 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 depth.Time = DateTime.UtcNow;
 
-                if (depth.Time < _lastTimeMd)
+                if (depth.Time <= _lastTimeMd) 
                 {
-                    depth.Time = _lastTimeMd;
+                    _lastTimeMd = _lastTimeMd.AddTicks(1);
+                    depth.Time = _lastTimeMd;              
                 }
-                else if (depth.Time == _lastTimeMd)
+                else
                 {
-                    _lastTimeMd = DateTime.FromBinary(_lastTimeMd.Ticks + 1);
-
-                    depth.Time = _lastTimeMd;
+                    _lastTimeMd = depth.Time; 
                 }
 
                 _lastTimeMd = depth.Time;
