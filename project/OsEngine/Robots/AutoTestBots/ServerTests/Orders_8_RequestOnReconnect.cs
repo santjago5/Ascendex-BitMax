@@ -383,8 +383,15 @@ namespace OsEngine.Robots.AutoTestBots.ServerTests
 
             if (string.IsNullOrEmpty(order.SecurityNameCode))
             {
-                this.SetNewError("Error 18. SecurityNameCode is null or empty");
+
+                this.SetNewError(
+    $"Error 18. SecurityNameCode is null or empty | " +
+    $"NumUser: {order.NumberUser}, " +
+    $"State: {order.State}, " +
+    $"Security: {order.SecurityNameCode}, " +
+    $"Portfolio: {order.PortfolioNumber}");
                 return false;
+
             }
 
             if (string.IsNullOrEmpty(order.PortfolioNumber))

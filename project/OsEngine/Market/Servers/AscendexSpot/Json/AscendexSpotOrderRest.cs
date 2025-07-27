@@ -8,14 +8,14 @@ using Newtonsoft.Json;
 namespace OsEngine.Market.Servers.AscendexSpot.Json
 {
 
-    public class AscendexSpotOrderResponse
+    public class AscendexSpotOrderResponse//(выставление ордера)
     {
         public string code { get; set; }                              // Response code
 
         public AscendexSpotQueryOrderResponse data { get; set; }     // Response data
     }
 
-    public class AscendexSpotQueryOrderResponse
+    public class AscendexSpotQueryOrderResponse//(выставление ордера)
     {
         public string accountId { get; set; }                  // Account ID
 
@@ -28,10 +28,8 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public AscendexSpotOrderInfo info { get; set; }        //Detailed order info
     }
 
-    public class AscendexSpotOrderInfo
+    public class AscendexSpotOrderInfo//(выставление ордера)
     {
-        public string id { get; set; }               // Id
-
         public string avgPx { get; set; }            // Average price
 
         public string cumFee { get; set; }           // Cumulative fee
@@ -63,6 +61,17 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         public string symbol { get; set; }           // Trading pair
 
         public string execInst { get; set; }         // Execution instruction
+    }
+
+    public class AscendexQueryOrderResponse//(byId)
+    {
+        public string code { get; set; }
+
+        public string accountCategory { get; set; }
+
+        public string accountId { get; set; }
+
+        public AscendexSpotOrderInfo data { get; set; }
     }
 
     public class AscendexSpotOpenOrdersResponse

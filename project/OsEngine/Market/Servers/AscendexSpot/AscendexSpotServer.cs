@@ -1779,7 +1779,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 updateOrder.TimeCreate = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(data.t));
                 updateOrder.ServerType = ServerType.AscendexSpot;
                 updateOrder.PortfolioNumber = _portfolioName;
-
+               
                 if (json.data.status == "PartiallyFilled" || json.data.status == "Filled")
                 {
                     UpdateMyTrade(data);
@@ -2024,7 +2024,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return;
                 }
 
-                if (/*request.StatusCode == HttpStatusCode.OK && */response.code != "0")
+                if (response.code != "0")
                 {
                     SendLogMessage($"SendOrder failed: raw response: {request.Content}", LogMessageType.Error);
 
@@ -2036,6 +2036,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                 if (response.code == "0")
                 {
                     order.NumberMarket = response.data.info.orderId;
+                    order.State = OrderStateType.Active;
 
                     if (order.NumberUser != 0 && order.NumberMarket != "0")
                     {
@@ -2051,6 +2052,8 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     }
 
                     SaveOrderTrackers();
+
+                    SendLogMessage($"Order sent successfully: Symbol={order.SecurityNameCode}, UserNum={order.NumberUser}, MarketNum={order.NumberMarket}", LogMessageType.Trade);
 
                     MyOrderEvent?.Invoke(order);
                 }
@@ -2115,8 +2118,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 long time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 string secName = order.SecurityNameCode;
-                string typeOrder = order.TypeOrder == OrderPriceType.Limit ? "Limit" : "Market";
-                string numberUser = order.NumberUser.ToString();
                 string orderId = order.NumberMarket.ToString();
 
                 string body = $"{{\"orderId\":\"{orderId}\",\"symbol\":\"{secName}\",\"time\":{time}}}";
@@ -2135,15 +2136,15 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                     if (cancelResult != null && cancelResult.code == "0")
                     {
-                        Order cancelOrd = new Order();
+                        Order cancelOrder = new Order();
 
-                        cancelOrd.NumberMarket = cancelResult.data.info.orderId;
-                        cancelOrd.NumberUser = GetUserOrderNumber(cancelResult.data.info.orderId);
-                        cancelOrd.TimeCancel = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(cancelResult.data.info.timestamp));
-                        cancelOrd.State = OrderStateType.Cancel;
-                        SendLogMessage($"Order cancelled: OrderId = {cancelOrd.NumberMarket}, User = {cancelOrd.NumberUser}", LogMessageType.Trade);
-
-                        MyOrderEvent?.Invoke(cancelOrd);
+                        cancelOrder.SecurityNameCode = cancelResult.data.info.symbol;
+                        cancelOrder.NumberMarket = cancelResult.data.info.orderId;
+                        cancelOrder.NumberUser = GetUserOrderNumber(cancelResult.data.info.orderId);
+                        cancelOrder.TimeCancel = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(cancelResult.data.info.timestamp));
+                        cancelOrder.State = GetOrderState(cancelResult.data.status);
+                        
+                        SendLogMessage($"Order cancelled: OrderId = {cancelOrder.NumberMarket}, User = {cancelOrder.NumberUser}", LogMessageType.Trade);
                     }
                     else
                     {
@@ -2248,6 +2249,7 @@ namespace OsEngine.Market.Servers.AscendexSpot
                             activeOrder.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(order.lastExecTime));
                             activeOrder.ServerType = ServerType.AscendexSpot;
                             activeOrder.SecurityNameCode = order.symbol;
+                            activeOrder.SecurityClassCode = GetNameClass(order.symbol);
                             activeOrder.NumberMarket = order.orderId;
                             activeOrder.NumberUser = GetUserOrderNumber(order.orderId);
                             activeOrder.Side = order.side == "Buy" ? Side.Buy : Side.Sell;
@@ -2270,10 +2272,10 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     SendLogMessage($" HTTP Error:{response.Content}", LogMessageType.Error);
                 }
 
-                for (int i = 0; i < orders.Count; i++)
-                {
-                    MyOrderEvent?.Invoke(orders[i]);
-                }
+                //for (int i = 0; i < orders.Count; i++)
+                //{
+                //    MyOrderEvent?.Invoke(orders[i]);
+                //}
 
                 return orders;
             }
@@ -2363,12 +2365,12 @@ namespace OsEngine.Market.Servers.AscendexSpot
 
                 if (request.StatusCode != HttpStatusCode.OK)
                 {
-                    SendLogMessage($"GetOrderStatusById > HTTP error: {request.StatusCode}, content: {request.Content}", LogMessageType.Error);
+                    SendLogMessage($"GetOrderStatusById > HTTP error: {request.Content}", LogMessageType.Error);
                     return null;
                 }
 
-                AscendexSpotOpenOrdersResponse response =
-                 JsonConvert.DeserializeObject<AscendexSpotOpenOrdersResponse>(request.Content);
+                AscendexQueryOrderResponse response =
+                 JsonConvert.DeserializeObject<AscendexQueryOrderResponse>(request.Content);
 
                 if (response == null)
                 {
@@ -2376,46 +2378,49 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     return new Order();
                 }
 
-                if (response.code == "0")
+                if (response.code == "0" && response.data != null)
                 {
                     SendLogMessage("Raw JSON response: " + request.Content, LogMessageType.Error);
 
-                    AscendexSpotOrderInfo orderData = response.;
+                    AscendexSpotOrderInfo orderData = response.data;
 
-                    order.SecurityNameCode = orderData.symbol;
-                    order.NumberMarket = orderData.orderId;
-                    order.NumberUser = GetUserOrderNumber(orderData.orderId);
-                    order.Price = orderData.price.ToDecimal();
-                    order.PortfolioNumber = _portfolioName;
-                    order.SecurityClassCode = GetNameClass(orderData.symbol);
-                    order.Side = orderData.side == "Buy" ? Side.Buy : Side.Sell;
-                    order.TypeOrder = orderData.orderType == "Limit" ? OrderPriceType.Limit : OrderPriceType.Market;
-                    order.Volume = orderData.orderQty.ToDecimal();
-                    order.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(orderData.lastExecTime));
-                    order.State = GetOrderState(orderData.status);
-
-                    if (orderData.status == "Filled" || orderData.status == "PartiallyFilled")
+                    if (orderData != null)
                     {
-                        MyTrade myTrade = new MyTrade();
+                        order.SecurityNameCode = orderData.symbol;
+                        order.SecurityClassCode = GetNameClass(orderData.symbol);
+                        order.NumberMarket = orderData.orderId;
+                        order.NumberUser = GetUserOrderNumber(orderData.orderId);
+                        order.Price = orderData.price.ToDecimal();
+                        order.PortfolioNumber = _portfolioName;
+                        order.Side = orderData.side == "Buy" ? Side.Buy : Side.Sell;
+                        order.TypeOrder = orderData.orderType == "Limit" ? OrderPriceType.Limit : OrderPriceType.Market;
+                        order.Volume = orderData.orderQty.ToDecimal();
+                        order.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(orderData.lastExecTime));
+                        order.State = GetOrderState(orderData.status);
 
-                        myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(orderData.lastExecTime));
-                        myTrade.SecurityNameCode = orderData.symbol;
-                        myTrade.Price = orderData.price.ToDecimal();
-                        myTrade.NumberTrade = orderData.seqNum;
-                        myTrade.NumberOrderParent = orderData.orderId;
-                        myTrade.Volume = orderData.orderQty.ToDecimal();
-                        myTrade.Side = orderData.side == "Buy" ? Side.Buy : Side.Sell;
+                        if (orderData.status == "Filled" || orderData.status == "PartiallyFilled")
+                        {
+                            MyTrade myTrade = new MyTrade();
 
-                        MyTradeEvent?.Invoke(myTrade);
+                            myTrade.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(orderData.lastExecTime));
+                            myTrade.SecurityNameCode = orderData.symbol;
+                            myTrade.Price = orderData.price.ToDecimal();
+                            myTrade.NumberTrade = orderData.seqNum;
+                            myTrade.NumberOrderParent = orderData.orderId;
+                            myTrade.Volume = orderData.orderQty.ToDecimal();
+                            myTrade.Side = orderData.side == "Buy" ? Side.Buy : Side.Sell;
+
+                            MyTradeEvent?.Invoke(myTrade);
+                        }
+                        SendLogMessage($"byid{order.SecurityNameCode}{order.SecurityClassCode}{order.NumberMarket}{order.State}{order.NumberUser}", LogMessageType.Error);
+                    }
+                    else
+                    {
+                        order.State = GetOrderState(orderData.status);
+                        SendLogMessage($"HTTP Error:{request.Content}", LogMessageType.Error);
                     }
                 }
-                else
-                {
-                    SendLogMessage($"HTTP Error: {request.StatusCode}, content={request.Content}", LogMessageType.Error);
-                }
-
                 MyOrderEvent?.Invoke(order);
-
                 return order;
             }
             catch (Exception exception)

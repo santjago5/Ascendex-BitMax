@@ -23,24 +23,24 @@ namespace OsEngine.Market.Servers.AscendexSpot.Json
         [JsonProperty("s")]
         public string symbol { get; set; }            // symbol "BTC/USDT"
 
-        public string sn { get; set; }               // sequence number "8159711" — уникальный номер события
+        public string sn { get; set; }                // sequence number "8159711" — уникальный номер события
 
-        public string ap { get; set; }              // average fill price "0" — средняя цена исполнения
+        public string ap { get; set; }                // average fill price "0" — средняя цена исполнения
+          
+        public string bab { get; set; }               // base asset available balance  "2006.5974027"— доступный базовый актив
 
-        public string bab { get; set; }            // base asset available balance  "2006.5974027"— доступный базовый актив
+        public string btb { get; set; }               // base asset total balance  "2006.5974027" — общий базовый актив
 
-        public string btb { get; set; }           // base asset total balance  "2006.5974027" — общий базовый актив
-
-        public string cf { get; set; }           // cumulated commission  "0" — суммарная комиссия
+        public string cf { get; set; }               // cumulated commission  "0" — суммарная комиссия
 
         [JsonProperty("cfq")]
-        public string quantity { get; set; }    // cumulated filled qty  "0" — суммарное исполненное количество
+        public string quantity { get; set; }          // cumulated filled qty  "0" — суммарное исполненное количество
 
-        public string err { get; set; }        // error code ""— код ошибки (может быть пустым)
+        public string err { get; set; }              // error code ""— код ошибки (может быть пустым)
+            
+        public string fa { get; set; }              // fee asset "USDT"— актив, в котором взята комиссия
 
-        public string fa { get; set; }         // fee asset "USDT"— актив, в котором взята комиссия
-
-        public string orderId { get; set; }   // order id "s16ef210b1a50866943712bfaf1584b" — уникальный идентификатор ордера
+        public string orderId { get; set; }         // order id "s16ef210b1a50866943712bfaf1584b" — уникальный идентификатор ордера
 
         [JsonProperty("ot")]
         public string orderType { get; set; }      // order type "Market, Limit"— тип ордера (например: Market, Limit)
