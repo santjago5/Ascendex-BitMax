@@ -2272,11 +2272,6 @@ namespace OsEngine.Market.Servers.AscendexSpot
                     SendLogMessage($" HTTP Error:{response.Content}", LogMessageType.Error);
                 }
 
-                //for (int i = 0; i < orders.Count; i++)
-                //{
-                //    MyOrderEvent?.Invoke(orders[i]);
-                //}
-
                 return orders;
             }
             catch (Exception exception)
